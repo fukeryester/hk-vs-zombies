@@ -128,27 +128,39 @@
     });
   }
 
-  // ------------- 单机开局 -------------
+  // ------------- 单机开局：进大厅让玩家选阵营/文明/座位 -------------
   function startSinglePlayer(mode) {
-    // 允许玩家在开局前挑一个 HK 文明
-    const hkCiv = pickCiv("hk") || "hk_finance";
-    const zomCiv = pickCiv("zom") || "zom_classic";
-    App.lobby = Lobby.buildLocal(mode, hkCiv, zomCiv);
-    App.matchMeta = { mode, config: App.lobby, started_at: new Date().toISOString() };
-    App.meSeat = 0;
-    App.isHost = true;
     App.isLocal = true;
-    startGameFromLobby(App.lobby);
-  }
-  // 单机用一个非常极简的 prompt 选择（避免额外弹层）
-  function pickCiv(side) {
-    const list = side === "hk" ? HK_CIVS : ZOM_CIVS;
-    // 若已经玩过 → 复用上次选择
-    const key = "hkvz.pref." + side;
-    const prev = localStorage.getItem(key);
-    if (prev && list.includes(prev)) return prev;
-    // 随机一个
-    return list[Math.floor(Math.random() * list.length)];
+    App.isHost = true;
+    App.meSeat = 0;
+    Lobby.setHostFlags(true, "local-me");
+    Lobby.initLocal(mode);
+    // 记住上次选的文明作为初始高亮
+    const prevHk = localStorage.getItem("hkvz.pref.hk");
+    const prevZom = localStorage.getItem("hkvz.pref.zom");
+    if (prevHk && HK_CIVS.includes(prevHk)) {
+      const me = Lobby.getState().slots.find(s => s.clientId === "local-me");
+      if (me) me.civId = prevHk;
+    }
+    // AI 文明多样化：不重复
+    const st = Lobby.getState();
+    const hkPool = HK_CIVS.filter(c => c !== (prevHk || HK_CIVS[0]));
+    const zomPool = ZOM_CIVS.slice();
+    let hi = 0, zi = 0;
+    st.slots.forEach(s => {
+      if (!s.isAI) return;
+      if (s.team === "hk") s.civId = hkPool[hi++ % hkPool.length];
+      else                 s.civId = zomPool[zi++ % zomPool.length];
+    });
+
+    document.getElementById("lobby-title").textContent = "单机 · vs AI";
+    document.getElementById("lobby-code").textContent = "本地";
+    document.getElementById("lobby-mode").value = mode;
+    document.getElementById("lobby-mode").disabled = false;
+    document.getElementById("lobby-fill-ai").checked = true;
+    document.getElementById("lobby-fill-ai").disabled = true; // 单机必须补 AI
+    showScreen("lobby");
+    renderLobby();
   }
 
   // ------------- 联机 · 创房 -------------
@@ -260,18 +272,23 @@
     }
   }
 
+  // 大厅视图辅助：本地/联机通用
+  function amHost() { return App.isLocal ? true : Net.iAmHost(); }
+  function myCid()  { return App.isLocal ? "local-me" : Net.myClientId(); }
+
   // 渲染大厅 UI
   function renderLobby() {
     const state = Lobby.getState();
     if (!state) return;
     const picker = document.getElementById("lobby-civ-picker");
     const hint = document.getElementById("lobby-hint");
-    hint.textContent = Net.iAmHost() ? "房主 · 挑好模式、选好文明后开始对战" : "等待房主开始";
-    document.getElementById("lobby-start").style.display = Net.iAmHost() ? "" : "none";
-    document.getElementById("lobby-mode").disabled = !Net.iAmHost();
+    hint.textContent = App.isLocal ? "单机模式 · 选好阵营和文明就开打"
+                                    : (amHost() ? "房主 · 挑好模式、选好文明后开始对战" : "等待房主开始");
+    document.getElementById("lobby-start").style.display = amHost() ? "" : "none";
+    document.getElementById("lobby-mode").disabled = !amHost();
 
     // 我这一格的信息
-    const me = state.slots.find(s => s.clientId === Net.myClientId());
+    const me = state.slots.find(s => s.clientId === myCid());
     const myTeam = me ? me.team : "hk";
     const myCiv = me ? me.civId : "hk_finance";
 
@@ -281,16 +298,16 @@
       const idx = Number(el.dataset.slot);
       const seatArr = state.slots.filter(s => s.team === team);
       const s = seatArr[idx];
-      const canClaim = !s || s.isAI || (s.clientId !== Net.myClientId());
+      const canClaim = !s || s.isAI || (s.clientId !== myCid());
       if (!s) {
         el.className = "slot clickable";
         el.innerHTML = `<div class="empty">${team === "hk" ? "🏙️ 空位" : "🧟 空位"}<div class='slot-hint'>点这里坐下</div></div>`;
       } else {
-        const isMe = s.clientId === Net.myClientId();
+        const isMe = s.clientId === myCid();
         el.className = "slot occupied" + (isMe ? " me" : "") + (s.isAI ? " ai" : "") + (canClaim ? " clickable" : "");
         const civ = CIVS[s.civId] || { name: "?" };
         const label = s.isAI ? " · AI" : (isMe ? " · 我" : "");
-        const hint = isMe ? "" : (s.isAI && Net.iAmHost() ? `<div class='slot-hint'>点击踢掉 AI 并坐下</div>`
+        const hint = isMe ? "" : (s.isAI && amHost() ? `<div class='slot-hint'>点击踢掉 AI 并坐下</div>`
                                 : s.isAI ? `<div class='slot-hint'>点击占位换阵营</div>` : "");
         el.innerHTML = `
           <div class="who">${HUD.escapeHtml(s.name)}${label}</div>
@@ -344,14 +361,29 @@
 
   function bindLobbyUI() {
     document.getElementById("lobby-start").addEventListener("click", () => {
+      // 单机：不用广播，直接开
+      if (App.isLocal) {
+        const st = Lobby.getState();
+        if (!st) return;
+        const hk = st.slots.filter(s => s.team === "hk").length;
+        const zom = st.slots.filter(s => s.team === "zom").length;
+        if (hk === 0 || zom === 0) { HUD.showToast("双方都要有玩家或 AI"); return; }
+        // 记住玩家的偏好
+        const me = st.slots.find(s => s.clientId === "local-me");
+        if (me) localStorage.setItem("hkvz.pref." + me.team, me.civId);
+        App.lobby = st;
+        App.matchMeta = { mode: st.mode, config: st, started_at: new Date().toISOString() };
+        startGameFromLobby(st);
+        return;
+      }
       const cfg = Lobby.hostStartGame();
       if (!cfg) return;
     });
     document.getElementById("lobby-mode").addEventListener("change", (ev) => {
-      if (Net.iAmHost()) Lobby.hostChangeMode(ev.target.value);
+      if (amHost()) Lobby.hostChangeMode(ev.target.value);
     });
     document.getElementById("lobby-fill-ai").addEventListener("change", (ev) => {
-      if (Net.iAmHost()) Lobby.hostToggleFillAI(ev.target.checked);
+      if (amHost()) Lobby.hostToggleFillAI(ev.target.checked);
     });
     Lobby.setStart((cfg) => startGameFromNet(cfg));
     Lobby.setUpdate(() => renderLobby());

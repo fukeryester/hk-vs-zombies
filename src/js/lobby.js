@@ -45,6 +45,26 @@ const Lobby = (function () {
     state = { mode, hostSeat: 0, slots: [], fillAI: true };
   }
 
+  // 单机模式：本地拿"房主+客户端"两个身份，插一个"我"当第一格 HK，其余用 AI 补齐
+  function initLocal(mode) {
+    iAmHost = true;
+    myClientId = "local-me";
+    state = { mode, hostSeat: 0, slots: [], fillAI: true };
+    state.slots.push({
+      seat: 0,
+      clientId: "local-me",
+      userId: null,
+      name: "我",
+      team: "hk",
+      civId: HK_CIVS[0],
+      row: 0,
+      ready: true,
+      isAI: false,
+    });
+    fillAISlots();
+    recalcRows();
+  }
+
   function pushMemberAsSlot(member, seatIdx) {
     // 默认新加的人先放到 HK 阵营空位
     const teamCountHK = state.slots.filter(s => s.team === "hk").length;
@@ -247,7 +267,7 @@ const Lobby = (function () {
   function getState() { return state; }
 
   return {
-    buildLocal,
+    buildLocal, initLocal,
     initHost, hostOnMemberJoined, hostOnMemberLeft, hostReceiveReady, hostChangeMode, hostToggleFillAI, hostStartGame,
     applyLobbyState, broadcastLobbyState,
     sendMyChoice, tryClaimSlot, setHostFlags, setStart, setUpdate, getState,
