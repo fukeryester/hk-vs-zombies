@@ -49,21 +49,22 @@ const ZOM_FALLBACK = {
   melee_cheap:  "zom_normal",
   melee_fast:   "zom_hop",
 };
+// 更强的体型差异化 —— 巨人有压迫感，小僵尸/跳蚤更矮
 const ARCH_HEIGHT = {
-  melee_cheap:  58,
-  melee_tank:   68,
-  melee_fast:   56,
+  melee_cheap:  55,
+  melee_tank:   88,
+  melee_fast:   48,
   ranged_light: 60,
-  ranged_aoe:   60,
-  ranged_heavy: 66,
-  support:      62,
-  zom_normal:   60,
-  zom_hopper:   62,
-  zom_banshee:  70,
-  zom_giant:    80,
-  zom_cata:     72,
-  zom_toxic:    64,
-  zom_ghost:    68,
+  ranged_aoe:   64,
+  ranged_heavy: 78,
+  support:      66,
+  zom_normal:   56,
+  zom_hopper:   42,
+  zom_banshee:  76,
+  zom_giant:    145,   // 巨人：整整 2.5x 普通僵尸，很有压迫感
+  zom_cata:     82,
+  zom_toxic:    62,
+  zom_ghost:    70,
 };
 
 function imgForUnit(u) {
@@ -72,6 +73,64 @@ function imgForUnit(u) {
   return ARCH_TO_IMG[arch] || "hk_peasant";
 }
 function heightForUnit(u) { return ARCH_HEIGHT[u.def.arch] || 60; }
+
+// ==================================================================
+// 帧动画映射
+// ==================================================================
+// 兵种基础 sprite 类型 —— 决定用哪套帧动画表
+function pickAnimBase(u) {
+  const arch = u.def.arch;
+  if (u.team === "hk") {
+    // hk_slum 用 orc（更粗犷）；其他 hk 用 soldier
+    return u.civId === "hk_slum" ? "orc" : "soldier";
+  }
+  // 僵尸队伍：按 arch 决定
+  switch (arch) {
+    case "zom_giant": return "zbig";
+    case "zom_cata":  return "zaxe";
+    default:          return "zsmall";
+  }
+}
+
+// 攻击动画挑选（soldier / orc 有 3 套 attack sheet）
+function pickAttackAnim(base, arch) {
+  if (base === "soldier") {
+    if (arch === "ranged_light" || arch === "ranged_aoe" || arch === "ranged_heavy") return "atk3";
+    if (arch === "melee_tank" || arch === "support") return "atk2";
+    return "atk1";
+  }
+  if (base === "orc") {
+    if (arch === "ranged_light" || arch === "ranged_aoe" || arch === "ranged_heavy") return "atk2";
+    return "atk1";
+  }
+  return "atk";  // 僵尸类只有一套
+}
+
+// 走路速度调制：跳蚤走得快，巨人走得慢
+const ARCH_WALK_FPS = {
+  melee_fast: 14, zom_hopper: 16,
+  melee_tank: 8,  zom_giant: 6,
+};
+function walkFpsForArch(arch) { return ARCH_WALK_FPS[arch] || 10; }
+function attackFpsForArch(arch) { return arch === "zom_giant" ? 10 : 14; }
+
+// 文明染色（source-atop 叠加，让同 arch 不同 civ 一眼看出区别）
+const CIV_TINT = {
+  hk_finance: "rgba( 60,120,220,0.20)",   // 冷蓝
+  hk_slum:    "rgba(200,110, 50,0.20)",   // 暖橙
+  hk_police:  "rgba( 70,150, 90,0.22)",   // 军绿
+  zom_classic:"rgba(120,140, 60,0.16)",   // 腐黄
+  zom_ghost:  "rgba(170,210,230,0.22)",   // 幽蓝
+  zom_bio:    "rgba( 60,180,110,0.24)",   // 生化绿
+};
+
+// 兵种个体色偏移（同 civ 同 arch 内也再有微差）
+function unitHueBias(u) {
+  // 用 unit key（civId + arch name）做确定性偏移
+  const s = (u.civId || "") + "|" + (u.def?.name || "") + "|" + u.def.arch;
+  let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+  return (h % 40) - 20;   // -20 ~ +20 度
+}
 
 // civ → 背景 & 基地贴图
 const CIV_BG = {
@@ -123,17 +182,27 @@ function drawBackground(ctx, snap) {
   ctx.fillStyle = vig;
   ctx.fillRect(0, 0, R.CANVAS_W, R.CANVAS_H);
 
-  // 地面条 —— 深沥青
-  const ground = ctx.createLinearGradient(0, R.GROUND_Y - 5, 0, R.CANVAS_H);
-  ground.addColorStop(0, "rgba(58,36,22,0.85)");
-  ground.addColorStop(0.3, "rgba(35,22,16,0.9)");
-  ground.addColorStop(1, "rgba(13,7,5,1)");
+  // 地面条 —— 沥青路，向上一直延伸到后排（row 1）视觉水平线之上
+  //   row 0 站在 GROUND_Y；row 1 因 ROW_OFFSET[1]=-55 站在更高的地方
+  //   如果地面不延伸上去，后排的建筑/单位会像浮空
+  const backY = R.GROUND_Y + R.ROW_OFFSET[1] - 10;   // 后排线略上一点缓冲
+  const ground = ctx.createLinearGradient(0, backY, 0, R.CANVAS_H);
+  ground.addColorStop(0.00, "rgba(58,36,22,0)");     // 顶端与背景无缝
+  ground.addColorStop(0.15, "rgba(58,36,22,0.85)");  // 淡入沥青
+  ground.addColorStop(0.45, "rgba(35,22,16,0.95)");
+  ground.addColorStop(1.00, "rgba(13,7,5,1)");
   ctx.fillStyle = ground;
-  ctx.fillRect(0, R.GROUND_Y, R.CANVAS_W, R.CANVAS_H - R.GROUND_Y);
+  ctx.fillRect(0, backY, R.CANVAS_W, R.CANVAS_H - backY);
 
-  // 路缘线
+  // 前排路缘线（row 0 站位处）
   ctx.strokeStyle = "#0a0503"; ctx.lineWidth = 2;
   ctx.beginPath(); ctx.moveTo(0, R.GROUND_Y); ctx.lineTo(R.CANVAS_W, R.GROUND_Y); ctx.stroke();
+  // 后排水平线（row 1 站位处）—— 更浅的地平线暗示远近
+  ctx.strokeStyle = "rgba(10,5,3,0.55)"; ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, R.GROUND_Y + R.ROW_OFFSET[1]);
+  ctx.lineTo(R.CANVAS_W, R.GROUND_Y + R.ROW_OFFSET[1]);
+  ctx.stroke();
 
   // 中线（黄色间断）
   ctx.strokeStyle = "rgba(240,190,80,0.55)"; ctx.lineWidth = 2;
@@ -371,14 +440,40 @@ function drawBase(ctx, x, groundY, civId, team, hpRatio, scale, player) {
 // ==================================================================
 function drawUnit(ctx, u, tShow) {
   const { cx, cy } = toCanvas(u.x, 0, u.row || 0);
-  const s = scaleForRow(u.row || 0);
+  const rowMul = scaleForRow(u.row || 0);
   const dir = u.dir;
-  const imgKey = imgForUnit(u);
-  const img = IMG[imgKey];
-  const H = heightForUnit(u) * s;
+  const H = heightForUnit(u) * rowMul;
+
+  // ---- 挑帧动画 sheet + 当前帧 ----
+  const base = pickAnimBase(u);
+  const arch = u.def.arch;
+
+  // 判定动作：最近攻击窗 → 攻击 / 否则走路
+  const ATK_SHOW = 0.55;    // 攻击动画播放窗（秒）
+  const atkAge = u.atkFxTime ? (tShow - u.atkFxTime) : 999;
+  const isAtk = atkAge >= 0 && atkAge < ATK_SHOW;
+
+  const animName = isAtk ? pickAttackAnim(base, arch) : "walk";
+  let anim = IMG_ANIM[base + "_" + animName];
+  if (!anim) anim = IMG_ANIM[base + "_walk"] || IMG_ANIM[base + "_idle"];
+
+  let frame = 0;
+  if (anim) {
+    if (isAtk) {
+      const t = atkAge / ATK_SHOW;
+      frame = Math.max(0, Math.min(anim.frames - 1, Math.floor(t * anim.frames)));
+    } else {
+      const fps = walkFpsForArch(arch);
+      frame = Math.floor((tShow * fps + u.id * 3.13)) % anim.frames;
+    }
+  }
+  const range = u.def?.range || 24;
+  const isMelee = range <= 40;
+  const isRanged = !isMelee;
 
   ctx.save();
   ctx.translate(cx, cy);
+
   // 跳跃弧线
   let jumpH = 0;
   if (u.jumpUntil && u.jumpUntil > tShow) {
@@ -387,78 +482,93 @@ function drawUnit(ctx, u, tShow) {
   }
   ctx.translate(0, jumpH);
 
-  // 走路轻微上下抖
-  const walk = Math.sin(tShow * 8 + u.id) * 1.5;
-  ctx.translate(0, walk);
+  // 走路轻微上下抖（帧动画本身有 walk cycle，这里再叠一点飘感）
+  const walkBob = Math.sin(tShow * (walkFpsForArch(arch) * 0.7) + u.id) * 1.2;
+  ctx.translate(0, walkBob);
 
-  // 攻击动画：0~ATK_WIN 秒内做一次向前突刺（bell 曲线）
-  const ATK_WIN = 0.22;
-  const atkAge = u.atkFxTime ? (tShow - u.atkFxTime) : 999;
-  const isAtk = atkAge >= 0 && atkAge < ATK_WIN;
-  const atkP = isAtk ? (atkAge / ATK_WIN) : 0;
+  // 攻击 lunge（沿用旧的手感）
+  const atkP = isAtk ? (atkAge / ATK_SHOW) : 0;
   const atkBell = isAtk ? Math.sin(atkP * Math.PI) : 0;
-  const range = u.def?.range || 24;
-  const isMelee = range <= 40;
-  const isRanged = !isMelee;
   const lungeX = isAtk ? (dir * atkBell * (isMelee ? 10 : 4)) : 0;
   const recoilX = isRanged && isAtk ? (-dir * atkBell * 3) : 0;
   ctx.translate(lungeX + recoilX, 0);
 
-  // 阴影（脚下小椭圆）
-  ctx.fillStyle = "rgba(0,0,0,0.4)";
+  // 阴影
+  ctx.fillStyle = "rgba(0,0,0,0.42)";
   ctx.beginPath();
-  ctx.ellipse(0, 2 - walk - jumpH * 0.3, H * 0.28, 4 * s, 0, 0, Math.PI * 2);
+  ctx.ellipse(0, 2 - walkBob - jumpH * 0.3, H * 0.32, 4 * rowMul, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  if (img) {
-    const W = H * (img.width / img.height);
-    // 所有贴图统一默认朝右（+1）：dir=-1 就翻转
-    const spriteNaturalDir = +1;
-    const flipX = dir !== spriteNaturalDir;
+  // 鬼魂半透明
+  if (arch === "zom_ghost") ctx.globalAlpha = 0.7;
+
+  if (anim && anim.img) {
+    // 目标高度 → 缩放：像素完美要整数缩放，但角色多样先用比例
+    const targetH = H;
+    const scale = targetH / anim.fh;
+    const W = anim.fw * scale;
+
+    // sheet 默认朝右（+1）：dir=-1 时翻转
+    const flipX = dir !== +1;
     if (flipX) ctx.scale(-1, 1);
-    // 鬼魂半透明
-    if (u.def.arch === "zom_ghost") ctx.globalAlpha = 0.7;
-    ctx.drawImage(img, -W / 2, -H, W, H);
+
+    // 像素完美关闭平滑
+    const prevSmooth = ctx.imageSmoothingEnabled;
+    ctx.imageSmoothingEnabled = false;
+
+    // 主体
+    ctx.drawImage(anim.img,
+      frame * anim.fw, 0, anim.fw, anim.fh,   // src rect
+      -W / 2, -targetH, W, targetH);          // dst rect
+
+    // 文明染色：source-atop 叠加，只覆盖有像素的地方
+    const tint = CIV_TINT[u.civId];
+    if (tint) {
+      ctx.globalCompositeOperation = "source-atop";
+      ctx.fillStyle = tint;
+      ctx.fillRect(-W / 2, -targetH, W, targetH);
+      ctx.globalCompositeOperation = "source-over";
+    }
+    // 魅惑覆盖
     if (u.charmedBy) {
       ctx.globalCompositeOperation = "source-atop";
       ctx.fillStyle = "rgba(220,90,220,0.30)";
-      ctx.fillRect(-W / 2, -H, W, H);
+      ctx.fillRect(-W / 2, -targetH, W, targetH);
       ctx.globalCompositeOperation = "source-over";
     }
-    ctx.globalAlpha = 1;
-  } else {
-    ctx.fillStyle = u.team === "hk" ? "#4a70a8" : "#5a3a3a";
-    ctx.fillRect(-8, -H, 16, H);
-  }
 
-  // 近战：挥砍弧线 + 击打星芒
-  if (isAtk && isMelee) {
+    ctx.imageSmoothingEnabled = prevSmooth;
+  } else {
+    // 兜底：老静态图
+    const imgKey = imgForUnit(u);
+    const img = IMG[imgKey];
+    if (img) {
+      const W = H * (img.width / img.height);
+      const flipX = dir !== +1;
+      if (flipX) ctx.scale(-1, 1);
+      ctx.drawImage(img, -W / 2, -H, W, H);
+    } else {
+      ctx.fillStyle = u.team === "hk" ? "#4a70a8" : "#5a3a3a";
+      ctx.fillRect(-8, -H, 16, H);
+    }
+  }
+  ctx.globalAlpha = 1;
+
+  // 近战挥砍星芒（帧动画之外再加个冲击光）
+  if (isAtk && isMelee && atkP > 0.25 && atkP < 0.7) {
     ctx.save();
-    ctx.translate(dir * 12, -H * 0.55);
+    ctx.translate(dir * 14, -H * 0.55);
+    ctx.strokeStyle = `rgba(255,240,180,${(1 - atkP) * 0.9})`;
+    ctx.lineWidth = 2;
     const a0 = -Math.PI * 0.55 + atkP * Math.PI * 1.0;
     const a1 = -Math.PI * 0.15 + atkP * Math.PI * 1.0;
-    ctx.strokeStyle = `rgba(255,240,180,${(1 - atkP) * 0.9})`;
-    ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.arc(0, 0, 20, a0, a1); ctx.stroke();
-    // 冲击星
-    if (atkP > 0.35 && atkP < 0.75) {
-      ctx.strokeStyle = `rgba(255,200,80,${1 - atkP})`;
-      ctx.lineWidth = 2;
-      for (let i = 0; i < 4; i++) {
-        const ang = i * Math.PI / 2 + atkP * 3;
-        ctx.beginPath();
-        ctx.moveTo(dir * 4 + Math.cos(ang) * 4, Math.sin(ang) * 4);
-        ctx.lineTo(dir * 4 + Math.cos(ang) * 10, Math.sin(ang) * 10);
-        ctx.stroke();
-      }
-    }
+    ctx.beginPath(); ctx.arc(0, 0, 18, a0, a1); ctx.stroke();
     ctx.restore();
   }
-  // 远程：枪口闪光
+  // 远程枪口闪光
   if (isAtk && isRanged && atkP < 0.35) {
     ctx.save();
-    const mx = dir * 14;
-    const my = -H * 0.55;
+    const mx = dir * 14, my = -H * 0.55;
     ctx.fillStyle = `rgba(255,235,120,${1 - atkP * 3})`;
     ctx.beginPath(); ctx.arc(mx, my, 6 - atkP * 8, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = `rgba(255,160,40,${0.8 - atkP * 3})`;
@@ -472,7 +582,7 @@ function drawUnit(ctx, u, tShow) {
   if (u.hp < u.hpMax) {
     const barW = Math.max(28, H * 0.55);
     const hpP = u.hp / u.hpMax;
-    const barY = cy - H - 8 + jumpH + walk;
+    const barY = cy - H - 8 + jumpH + walkBob;
     ctx.fillStyle = "rgba(0,0,0,0.85)";
     ctx.fillRect(cx - barW / 2 - 1, barY - 1, barW + 2, 4);
     ctx.fillStyle = hpP > 0.5 ? "#5cd66d" : hpP > 0.25 ? "#f6a13d" : "#c93c3c";
@@ -481,7 +591,7 @@ function drawUnit(ctx, u, tShow) {
   if (u.charmedBy) {
     ctx.fillStyle = "#ff6ee0"; ctx.font = "14px sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText("💜", cx, cy - H - 12 + jumpH + walk);
+    ctx.fillText("💜", cx, cy - H - 12 + jumpH + walkBob);
   }
 }
 

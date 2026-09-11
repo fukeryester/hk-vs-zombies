@@ -94,14 +94,20 @@ const Lobby = (function () {
     if (onUpdate) onUpdate(state);
   }
 
-  // 客户端切换/选择：广播 my choice
+  // 客户端切换/选择：广播 my choice；同时本地乐观更新，UI 立刻反映
   function sendMyChoice(team, civId) {
+    if (!state) return;
     if (iAmHost) {
-      // 直接改自己的
+      // 房主直接改自己的
       const me = state.slots.find(s => s.clientId === myClientId);
-      if (me) { me.team = team; me.civId = civId; me.ready = true; }
+      if (me) { me.team = team; me.civId = civId; me.ready = true; recalcRows(); }
       broadcastLobbyState();
+      if (onUpdate) onUpdate(state);            // FIX: 房主自己也要刷新
     } else {
+      // 客户端：先本地乐观更新，UI 立刻响应
+      const me = state.slots.find(s => s.clientId === myClientId);
+      if (me) { me.team = team; me.civId = civId; me.ready = true; recalcRows(); }
+      if (onUpdate) onUpdate(state);
       Net.broadcast({ type:"lobby_ready", clientId: myClientId, team, civId });
     }
   }
@@ -114,18 +120,15 @@ const Lobby = (function () {
       s.team = msg.team || s.team;
       s.civId = msg.civId || s.civId;
       s.ready = true;
-      // 重排 row
       recalcRows();
       broadcastLobbyState();
+      if (onUpdate) onUpdate(state);            // FIX: 房主 UI 也刷新
     }
   }
 
   // 有人加入时（房主）
   function hostOnMemberJoined(member) {
     if (!iAmHost || !state) return;
-    const perSide = state.mode === "1v1" ? 1 : 2;
-    // 若某方已满 且新加入方超过 cap → 拒（简化：不加入）
-    // 移除已存在 AI 座位（若有），再插入新玩家
     // 简化：先把 AI 全部踢掉，让人插入，然后重新 fillAI
     state.slots = state.slots.filter(s => !s.isAI);
     // 加入新成员
@@ -135,6 +138,7 @@ const Lobby = (function () {
     if (state.fillAI) fillAISlots();
     recalcRows();
     broadcastLobbyState();
+    if (onUpdate) onUpdate(state);
   }
 
   function hostOnMemberLeft(member) {
@@ -145,6 +149,7 @@ const Lobby = (function () {
     if (state.fillAI) fillAISlots();
     recalcRows();
     broadcastLobbyState();
+    if (onUpdate) onUpdate(state);
   }
 
   function recalcRows() {
@@ -163,6 +168,7 @@ const Lobby = (function () {
     if (state.fillAI) fillAISlots();
     recalcRows();
     broadcastLobbyState();
+    if (onUpdate) onUpdate(state);
   }
   function hostToggleFillAI(on) {
     if (!iAmHost || !state) return;
@@ -171,6 +177,44 @@ const Lobby = (function () {
     else state.slots = state.slots.filter(s => !s.isAI);
     recalcRows();
     broadcastLobbyState();
+    if (onUpdate) onUpdate(state);
+  }
+
+  // 客户端/房主：尝试跳到某个座位 idx（team 内的第几格）
+  // 若目标是空位 → 换到该队伍
+  // 若目标是 AI → 房主可以踢掉 AI 并让自己占那格
+  // 若目标是其他真人 → 无操作
+  function tryClaimSlot(team, teamIdx) {
+    if (!state) return;
+    const seatArr = state.slots.filter(s => s.team === team);
+    const target = seatArr[teamIdx];
+    if (target) {
+      if (target.clientId === myClientId) return;           // 就是我自己
+      if (!target.isAI) return;                              // 别人的位置不能抢
+      // 是 AI：只有房主能踢，普通客户端就换团队即可
+      if (iAmHost) {
+        // 踢 AI + 把自己换过去（保持当前 civ 或换成 AI 的 civ）
+        const me = state.slots.find(s => s.clientId === myClientId);
+        state.slots = state.slots.filter(s => s !== target);
+        if (me) {
+          me.team = team;
+          // 保持我原来的 civ，若与新阵营不符则默认第一个
+          const validCivs = team === "hk" ? HK_CIVS : ZOM_CIVS;
+          if (!validCivs.includes(me.civId)) me.civId = validCivs[0];
+          me.ready = true;
+        }
+        if (state.fillAI) fillAISlots();
+        recalcRows();
+        broadcastLobbyState();
+        if (onUpdate) onUpdate(state);
+        return;
+      }
+    }
+    // 空位或我想换阵营：调用 sendMyChoice
+    const validCivs = team === "hk" ? HK_CIVS : ZOM_CIVS;
+    const me = state.slots.find(s => s.clientId === myClientId);
+    const keepCiv = (me && validCivs.includes(me.civId)) ? me.civId : validCivs[0];
+    sendMyChoice(team, keepCiv);
   }
 
   // 房主开始游戏：把最终 config 广播给所有人
@@ -206,7 +250,7 @@ const Lobby = (function () {
     buildLocal,
     initHost, hostOnMemberJoined, hostOnMemberLeft, hostReceiveReady, hostChangeMode, hostToggleFillAI, hostStartGame,
     applyLobbyState, broadcastLobbyState,
-    sendMyChoice, setHostFlags, setStart, setUpdate, getState,
+    sendMyChoice, tryClaimSlot, setHostFlags, setStart, setUpdate, getState,
   };
 })();
 

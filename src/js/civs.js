@@ -40,53 +40,53 @@ const B = {
 const SKILLS = {
   // ---- 香港阵营大招 ----
   angry_mob: {
-    id:"angry_mob", name:"街坊起义", cost:3000, side:"hk",
+    id:"angry_mob", name:"街坊起义", cost:1200, side:"hk",
     desc:"立即空投 4 枪手 + 10 铲兵，不占人口。",
     kind:"summon", units:[["melee_cheap",10],["ranged_light",4]], speedMul:1.15,
   },
   minibus_rush: {
-    id:"minibus_rush", name:"红 van 冲锋", cost:4000, side:"hk",
+    id:"minibus_rush", name:"红 van 冲锋", cost:1800, side:"hk",
     desc:"一辆红色小巴从左向右直冲，碾杀路上所有僵尸。",
     kind:"harvester", hp:2000, dmg:80, speed:120,
   },
   chopper_strike: {
-    id:"chopper_strike", name:"直升机扫射", cost:5000, side:"hk",
+    id:"chopper_strike", name:"直升机扫射", cost:2500, side:"hk",
     desc:"警队直升机降临，一次清光当前战场僵尸。",
     kind:"airstrike", targets:"zom",
   },
   gold_rain: {
-    id:"gold_rain", name:"股市暴涨", cost:2500, side:"hk",
+    id:"gold_rain", name:"股市暴涨", cost:1000, side:"hk",
     desc:"立刻获得 +$2000，人口 +6（临时 60 秒）。",
     kind:"buff_econ", cash:2000, popBonus:6, dur:60,
   },
   triad_ambush: {
-    id:"triad_ambush", name:"江湖救急", cost:3500, side:"hk",
+    id:"triad_ambush", name:"江湖救急", cost:1500, side:"hk",
     desc:"空投 6 位快速近战刀客，狂暴 15 秒。",
     kind:"summon", units:[["melee_fast",6]], speedMul:1.6,
   },
   // ---- 僵尸阵营大招 ----
   zom_horde: {
-    id:"zom_horde", name:"尸潮涌动", cost:3000, side:"zom",
+    id:"zom_horde", name:"尸潮涌动", cost:1200, side:"zom",
     desc:"立即涌出 14 只普通僵尸 + 4 只跳蚤，不占人口。",
     kind:"summon", units:[["zom_normal",14],["zom_hopper",4]], speedMul:1.2,
   },
   zom_catapult_barrage: {
-    id:"zom_catapult_barrage", name:"腐尸炮击", cost:4000, side:"zom",
+    id:"zom_catapult_barrage", name:"腐尸炮击", cost:1800, side:"zom",
     desc:"一次投掷 8 只普通僵尸到我方阵地。",
     kind:"barrage", count:8, unit:"zom_normal",
   },
   zom_night: {
-    id:"zom_night", name:"血月夜降", cost:5000, side:"zom",
+    id:"zom_night", name:"血月夜降", cost:2500, side:"zom",
     desc:"降临血月：己方僵尸移速 +30%，攻速 +30%，持续 15 秒。",
     kind:"buff_army", moveMul:1.3, atkMul:1.3, dur:15,
   },
   zom_plague: {
-    id:"zom_plague", name:"瘟疫扩散", cost:2500, side:"zom",
+    id:"zom_plague", name:"瘟疫扩散", cost:1000, side:"zom",
     desc:"当前战场所有敌方单位中毒 8 秒（-30% HP over time）。",
     kind:"poison", dmg:0.30, dur:8,
   },
   zom_ghost_summon: {
-    id:"zom_ghost_summon", name:"招魂夜巡", cost:3500, side:"zom",
+    id:"zom_ghost_summon", name:"招魂夜巡", cost:1500, side:"zom",
     desc:"空投 5 只鬼魂（半透明，可穿透前排直接打后排）。",
     kind:"summon", units:[["zom_ghost",5]], speedMul:1.4,
   },

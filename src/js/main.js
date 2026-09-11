@@ -275,38 +275,45 @@
     const myTeam = me ? me.team : "hk";
     const myCiv = me ? me.civId : "hk_finance";
 
-    // 渲染两边座位
+    // 渲染两边座位（点击可换位/踢 AI）
     document.querySelectorAll(".slot").forEach(el => {
       const team = el.dataset.team;
       const idx = Number(el.dataset.slot);
       const seatArr = state.slots.filter(s => s.team === team);
       const s = seatArr[idx];
+      const canClaim = !s || s.isAI || (s.clientId !== Net.myClientId());
       if (!s) {
-        el.className = "slot";
-        el.innerHTML = `<div class="empty">${team === "hk" ? "空位（等待玩家或 AI）" : "空位（等待僵尸或 AI）"}</div>`;
-        el.onclick = null;
+        el.className = "slot clickable";
+        el.innerHTML = `<div class="empty">${team === "hk" ? "🏙️ 空位" : "🧟 空位"}<div class='slot-hint'>点这里坐下</div></div>`;
       } else {
-        el.className = "slot occupied" + (s.clientId === Net.myClientId() ? " me" : "");
-        const civ = CIVS[s.civId];
-        const label = s.isAI ? " · AI" : (s.clientId === Net.myClientId() ? " · 我" : "");
+        const isMe = s.clientId === Net.myClientId();
+        el.className = "slot occupied" + (isMe ? " me" : "") + (s.isAI ? " ai" : "") + (canClaim ? " clickable" : "");
+        const civ = CIVS[s.civId] || { name: "?" };
+        const label = s.isAI ? " · AI" : (isMe ? " · 我" : "");
+        const hint = isMe ? "" : (s.isAI && Net.iAmHost() ? `<div class='slot-hint'>点击踢掉 AI 并坐下</div>`
+                                : s.isAI ? `<div class='slot-hint'>点击占位换阵营</div>` : "");
         el.innerHTML = `
           <div class="who">${HUD.escapeHtml(s.name)}${label}</div>
           <div class="civ">${HUD.escapeHtml(civ.name)}</div>
+          ${hint}
         `;
-        // 点击 → 我想换到这一格
-        el.onclick = () => {
-          // 简化：我点自己那侧 → 什么都不做；我点对面空位 → 切换阵营到那一侧
-          if (s.clientId === Net.myClientId()) return;
-        };
       }
+      // 点击处理：想去哪就点哪
+      el.onclick = () => {
+        if (!canClaim) return;
+        Lobby.tryClaimSlot(team, idx);
+      };
     });
 
-    // 文明选择格：我只能选自己阵营的
-    const civs = myTeam === "hk" ? HK_CIVS : ZOM_CIVS;
-    // 加上「换到僵尸/香港」的按钮
+    // 阵营切换按钮 + 文明卡（只显示当前阵营的所有 civ 供切换）
     const otherTeam = myTeam === "hk" ? "zom" : "hk";
-    const otherCivs = otherTeam === "hk" ? HK_CIVS : ZOM_CIVS;
+    const civs = myTeam === "hk" ? HK_CIVS : ZOM_CIVS;
     let html = "";
+    // 顶部一枚显眼的换边按钮
+    html += `<div class="civ-swap" data-team="${otherTeam}">
+      🔀 换到 ${otherTeam === "hk" ? "🏙️ 香港" : "🧟 僵尸"} 阵营
+    </div>`;
+    // 我方阵营的文明卡
     civs.forEach(cid => {
       const c = CIVS[cid];
       html += `
@@ -316,13 +323,16 @@
           <div class="civ-desc">${c.desc}</div>
         </div>`;
     });
-    // 换边按钮：选择对面第一个 civ 就等于切边
-    html += `<div class="civ-card" data-team="${otherTeam}" data-civ="${otherCivs[0]}" style="background:${CIVS[otherCivs[0]].color}22">
-      <div class="civ-side">切换到 ${otherTeam === "hk" ? "🏙️ 香港" : "🧟 僵尸"}</div>
-      <div class="civ-name">${CIVS[otherCivs[0]].name}</div>
-      <div class="civ-desc">点这里换阵营</div>
-    </div>`;
     picker.innerHTML = html;
+    // 换阵营按钮：保持我在对面同 index，再挑第一个可用 civ
+    const swapBtn = picker.querySelector(".civ-swap");
+    if (swapBtn) swapBtn.addEventListener("click", () => {
+      const otherCivs = otherTeam === "hk" ? HK_CIVS : ZOM_CIVS;
+      const remembered = localStorage.getItem("hkvz.pref." + otherTeam);
+      const pickCiv = (remembered && otherCivs.includes(remembered)) ? remembered : otherCivs[0];
+      Lobby.sendMyChoice(otherTeam, pickCiv);
+    });
+    // 文明卡：点了就换 civ
     picker.querySelectorAll(".civ-card").forEach(el => {
       el.addEventListener("click", () => {
         const t = el.dataset.team, c = el.dataset.civ;

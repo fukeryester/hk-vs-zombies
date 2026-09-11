@@ -158,9 +158,25 @@ button{ font-family:inherit; }
 .slot:hover{ background: rgba(255,255,255,.5); }
 .slot.occupied{ border-style: solid; background: rgba(255,255,255,.7); cursor: default; }
 .slot.me{ box-shadow: 0 0 0 3px var(--sun); }
+.slot.clickable{ cursor: pointer; }
+.slot.clickable:hover{ background: rgba(255, 240, 200, 0.9); transform: translateY(-2px); box-shadow: 0 4px 0 var(--stroke); }
+.slot.ai{ background: rgba(230,230,230,0.6); }
 .slot .who{ font-weight: 800; font-size: 15px; margin-bottom: 4px; }
 .slot .civ{ font-size: 13px; color: var(--rust); }
 .slot .empty{ color:#888; font-style: italic; text-align:center; padding: 10px; }
+.slot .slot-hint{ font-size: 11px; color:#888; margin-top: 6px; font-style: italic; }
+.slot.clickable:hover .slot-hint{ color: var(--rust); font-weight: 700; }
+
+.civ-swap{
+  grid-column: 1 / -1;
+  border: 3px solid var(--stroke); border-radius: 10px;
+  padding: 10px 14px;
+  background: linear-gradient(90deg, rgba(30,85,153,0.15), rgba(90,26,26,0.15));
+  font-weight: 900; font-size: 14px;
+  cursor: pointer; text-align:center;
+  transition: transform 0.1s;
+}
+.civ-swap:hover{ background: var(--sun); transform: translateY(-2px); box-shadow: 0 4px 0 var(--stroke); }
 
 .lobby-mid{
   display:flex; flex-direction: column; gap: 12px;

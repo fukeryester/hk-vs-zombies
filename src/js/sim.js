@@ -336,10 +336,12 @@ function tickSim(state, dt) {
   state.tick++;
   state.time += dt;
 
-  // ---- 每玩家：金钱增长 ----
+  // ---- 每玩家：金钱增长 + 能量被动回复 ----
   state.players.forEach(p => {
     p.gold += p.income * dt;
     p.earned += p.income * dt;
+    // 被动能量回复：+12 / 秒（比按击杀更靠谱，保证一局至少能放 1-2 次大招）
+    p.energy = Math.min(9999, (p.energy || 0) + 12 * dt);
 
     // 出兵队列
     while (p.queue.length && p.queue[0].ready <= state.time) {
@@ -671,7 +673,8 @@ function tickSim(state, dt) {
     // 死亡奖励能量给击杀方玩家（简化：给该单位所在阵营的所有敌方玩家均分）
     const enemyTeam = u.team === "hk" ? "zom" : "hk";
     const enemies = state.players.filter(pp => pp.team === enemyTeam);
-    const eng = (u.def.hp * 0.05 + u.def.dmg * 0.5 + u.def.cost * 0.25) | 0;
+    // 击杀能量：显著提升，让大招能在一局释放 2-3 次
+    const eng = ((u.def.hp * 0.08 + u.def.dmg * 0.9 + u.def.cost * 0.4) * 1.8) | 0;
     if (enemies.length > 0) {
       const per = eng / enemies.length;
       enemies.forEach(pp => { pp.energy = Math.min(9999, pp.energy + per); pp.kills++; pp.killsGold += (u.def.cost * 0.1) | 0; });

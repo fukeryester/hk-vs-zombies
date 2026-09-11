@@ -12,3 +12,6 @@ agent.md
 .vscode/
 .idea/
 *.log
+
+# dev-only reference art (huge, not shipped)
+src/frame-anim-example/
