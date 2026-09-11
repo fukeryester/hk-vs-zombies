@@ -84,6 +84,15 @@ function heightForUnit(u) { return ARCH_HEIGHT[u.def.arch] || 60; }
 function animKeyForUnit(u) {
   const arch = u.def.arch;
   if (arch.startsWith("zom_")) return arch;
+  if (u.team === "zom") {
+    const zombieSkin = {
+      melee_cheap: "zom_normal", melee_fast: "zom_hopper",
+      melee_tank: "zom_giant", ranged_light: "zom_ghost",
+      ranged_aoe: "zom_toxic", ranged_heavy: "zom_toxic",
+      support: "zom_banshee",
+    };
+    return zombieSkin[arch] || "zom_normal";
+  }
   return "hk_" + arch;
 }
 
@@ -419,20 +428,21 @@ function drawUnit(ctx, u, tShow) {
 
   // ---- 挑帧动画 sheet + 当前帧 ----
   const arch = u.def.arch;
-  const animKey = animKeyForUnit(u) + "_walk";
-  let anim = IMG_ANIM[animKey];
 
   // 判定动作：最近攻击窗 → 攻击 / 否则走路
   const ATK_SHOW = 0.55;
   const atkAge = u.atkFxTime ? (tShow - u.atkFxTime) : 999;
   const isAtk = atkAge >= 0 && atkAge < ATK_SHOW;
+  const animBase = animKeyForUnit(u);
+  const animKey = `${animBase}_${isAtk ? "attack" : "walk"}`;
+  let anim = IMG_ANIM[animKey] || IMG_ANIM[`${animBase}_walk`];
 
   let frame = 0;
   if (anim) {
     if (isAtk) {
-      // 攻击时：冻结/慢放中间几帧 + 特效叠加
+      // 完整播放独立的蓄力 → 命中 → 收招序列
       const t = atkAge / ATK_SHOW;
-      frame = Math.max(0, Math.min(anim.frames - 1, Math.floor(t * anim.frames * 0.5 + 1)));
+      frame = Math.max(0, Math.min(anim.frames - 1, Math.floor(t * anim.frames)));
     } else {
       const fps = walkFpsForArch(arch);
       frame = Math.floor((tShow * fps + u.id * 3.13)) % anim.frames;
@@ -453,8 +463,9 @@ function drawUnit(ctx, u, tShow) {
   }
   ctx.translate(0, jumpH);
 
-  // 走路轻微上下抖（帧动画本身有 walk cycle，这里再叠一点飘感）
-  const walkBob = Math.sin(tShow * (walkFpsForArch(arch) * 0.7) + u.id) * 1.2;
+  // 关键帧已有重心变化，只补少量连续位移避免逐帧感过硬。
+  const walkBob = isAtk ? 0 :
+    Math.sin(tShow * (walkFpsForArch(arch) * 0.7) + u.id) * 0.7;
   ctx.translate(0, walkBob);
 
   // 攻击 lunge（沿用旧的手感）

@@ -27,26 +27,20 @@ const IMG_LIST = [
   "env_debris", "env_car", "env_lamp", "env_trash",
 ];
 
-// 帧动画 sprite strip：每套都是「1 行 × N 列」水平条
-// 每个兵种有独立外观的 walk sheet；attack 暂复用 walk + 叠加攻击特效
-const ANIM_LIST = [
-  // ---- HK（7 个 arch）----
-  { key: "hk_melee_cheap_walk",  path: "img/anim/hk_melee_cheap_walk.png",  frames: 6 },
-  { key: "hk_melee_tank_walk",   path: "img/anim/hk_melee_tank_walk.png",   frames: 6 },
-  { key: "hk_melee_fast_walk",   path: "img/anim/hk_melee_fast_walk.png",   frames: 6 },
-  { key: "hk_ranged_light_walk", path: "img/anim/hk_ranged_light_walk.png", frames: 6 },
-  { key: "hk_ranged_aoe_walk",   path: "img/anim/hk_ranged_aoe_walk.png",   frames: 6 },
-  { key: "hk_ranged_heavy_walk", path: "img/anim/hk_ranged_heavy_walk.png", frames: 6 },
-  { key: "hk_support_walk",      path: "img/anim/hk_support_walk.png",      frames: 6 },
-  // ---- 僵尸（7 个 arch）----
-  { key: "zom_normal_walk",  path: "img/anim/zom_normal_walk.png",  frames: 6 },
-  { key: "zom_hopper_walk",  path: "img/anim/zom_hopper_walk.png",  frames: 6 },
-  { key: "zom_banshee_walk", path: "img/anim/zom_banshee_walk.png", frames: 6 },
-  { key: "zom_giant_walk",   path: "img/anim/zom_giant_walk.png",   frames: 6 },
-  { key: "zom_cata_walk",    path: "img/anim/zom_cata_walk.png",    frames: 6 },
-  { key: "zom_toxic_walk",   path: "img/anim/zom_toxic_walk.png",   frames: 6 },
-  { key: "zom_ghost_walk",   path: "img/anim/zom_ghost_walk.png",   frames: 6 },
+// 每个兵种都有独立 walk / attack 两套 6 帧动画。
+const ANIM_ARCHES = [
+  "hk_melee_cheap", "hk_melee_tank", "hk_melee_fast",
+  "hk_ranged_light", "hk_ranged_aoe", "hk_ranged_heavy", "hk_support",
+  "zom_normal", "zom_hopper", "zom_banshee", "zom_giant",
+  "zom_cata", "zom_toxic", "zom_ghost",
 ];
+const ANIM_LIST = ANIM_ARCHES.flatMap(arch =>
+  ["walk", "attack"].map(action => ({
+    key: `${arch}_${action}`,
+    path: `img/anim/${arch}_${action}.png`,
+    frames: 6,
+  }))
+);
 
 function loadAssets(onProgress) {
   let loaded = 0;
@@ -73,7 +67,7 @@ function loadAssets(onProgress) {
       resolve();
     };
     img.onerror = () => { console.warn("[assets] missing anim:", spec.path); tick(spec.key); resolve(); };
-    img.src = spec.path + "?v=2";
+    img.src = spec.path + "?v=3";
   });
 
   return Promise.all([
