@@ -58,6 +58,7 @@
     const el = document.getElementById(name + "-screen");
     if (el) el.classList.add("active");
     if (name === "play") setTimeout(resizeCanvasToWrap, 0);
+    if (name !== "codex" && typeof stopCodexUnitArts === "function") stopCodexUnitArts();
   }
 
   // ------------- Canvas 自适应视口 -------------
@@ -95,6 +96,7 @@
         App.assetsReady = true;
         const acc = document.getElementById("menu-account");
         if (acc && !Stats.enabled?.()) acc.textContent = "未登录 · 本地模式";
+        if (App.screen === "codex") renderCodex(App.codexCiv);
       });
     } else {
       App.assetsReady = true;
@@ -400,12 +402,11 @@
     unitsBox.innerHTML = Object.entries(civ.units)
       .sort((a, b) => a[1].cost - b[1].cost)
       .map(([uid, u]) => {
-        const key = Render?.imageKeyForUnitCard ? Render.imageKeyForUnitCard(civ.side, u.arch) : null;
         const splash = u.splash ? ` · 溅射 ${u.splash}` : "";
         const jump = u.jump ? ` · 跳跃 ${u.jump}` : "";
         return `
           <article class="codex-card">
-            <img src="${assetPath(key)}" alt="${HUD.escapeHtml(u.name)}">
+            <canvas class="codex-unit-art" data-team="${civ.side}" data-arch="${HUD.escapeHtml(u.arch)}" width="256" height="192" aria-label="${HUD.escapeHtml(u.name)}"></canvas>
             <div>
               <h4>${HUD.escapeHtml(u.name)}</h4>
               <div class="codex-sub">${HUD.escapeHtml(unitRoleText(u))} · ${HUD.escapeHtml(prereqName(civ, u.prereq))}</div>
@@ -465,6 +466,48 @@
         </article>
       `;
     }).join("");
+
+    paintCodexUnitArts();
+  }
+
+  let codexAnimRaf = 0;
+  function stopCodexUnitArts() {
+    if (codexAnimRaf) {
+      cancelAnimationFrame(codexAnimRaf);
+      codexAnimRaf = 0;
+    }
+  }
+  function paintCodexUnitArts() {
+    stopCodexUnitArts();
+    const canvases = Array.from(document.querySelectorAll("#codex-units .codex-unit-art"));
+    if (!canvases.length) return;
+    const step = (now) => {
+      if (App.screen !== "codex") { codexAnimRaf = 0; return; }
+      canvases.forEach(cv => {
+        const anim = Render?.animSheetForArch
+          ? Render.animSheetForArch(cv.dataset.team, cv.dataset.arch, "walk")
+          : null;
+        const ctx = cv.getContext("2d");
+        if (!ctx) return;
+        ctx.clearRect(0, 0, cv.width, cv.height);
+        if (!anim || !anim.img) return;
+        const fps = Render.walkFpsForArch ? Render.walkFpsForArch(cv.dataset.arch) : 10;
+        const frame = Math.floor((now / 1000) * fps) % anim.frames;
+        const pad = 12;
+        const scale = Math.min((cv.width - pad) / anim.fw, (cv.height - pad) / anim.fh);
+        const dw = anim.fw * scale;
+        const dh = anim.fh * scale;
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
+        ctx.drawImage(
+          anim.img,
+          frame * anim.fw, 0, anim.fw, anim.fh,
+          (cv.width - dw) / 2, (cv.height - dh) / 2 + 8, dw, dh
+        );
+      });
+      codexAnimRaf = requestAnimationFrame(step);
+    };
+    codexAnimRaf = requestAnimationFrame(step);
   }
 
   // 渲染大厅 UI

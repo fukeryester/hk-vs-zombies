@@ -81,10 +81,10 @@ function heightForUnit(u) { return ARCH_HEIGHT[u.def.arch] || 60; }
 // arch → anim sheet key 前缀
 // HK archs: melee_cheap → "hk_melee_cheap"
 // ZOM archs: zom_normal → "zom_normal"
-function animKeyForUnit(u) {
-  const arch = u.def.arch;
+function animKeyForArch(team, arch) {
+  if (!arch) return null;
   if (arch.startsWith("zom_")) return arch;
-  if (u.team === "zom") {
+  if (team === "zom") {
     const zombieSkin = {
       melee_cheap: "zom_normal", melee_fast: "zom_hopper",
       melee_tank: "zom_giant", ranged_light: "zom_ghost",
@@ -94,6 +94,15 @@ function animKeyForUnit(u) {
     return zombieSkin[arch] || "zom_normal";
   }
   return "hk_" + arch;
+}
+function animKeyForUnit(u) {
+  return animKeyForArch(u.team, u.def.arch);
+}
+function animSheetForArch(team, arch, action) {
+  const base = animKeyForArch(team, arch);
+  if (!base) return null;
+  const prefer = action || "walk";
+  return IMG_ANIM[`${base}_${prefer}`] || IMG_ANIM[`${base}_walk`] || IMG_ANIM[`${base}_attack`] || null;
 }
 
 // 走路速度调制：跳蚤走得快，巨人走得慢
@@ -869,6 +878,9 @@ function imageKeyForUnitCard(team, arch) {
 window.Render = {
   R, render, toCanvas,
   imageKeyForUnitCard,
+  animKeyForArch,
+  animSheetForArch,
+  walkFpsForArch,
   buildingImageKey,
   baseImageKeyForCiv: (civId) => CIV_BASE[civId],
   bgImageKeyForCiv: (civId) => CIV_BG[civId],
