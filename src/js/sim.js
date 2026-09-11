@@ -70,6 +70,8 @@ function createInitialState(config) {
       row,                      // 0=前, 1=后
       baseX,
       baseHp, baseHpMax: baseHp,
+      baseRegen: civ.baseRegen || 0,   // 基地被动回血速率（HP/秒，脱战 5 秒后）
+      lastHitTime: -999,                // 上次基地被击时间；开局默认可以立即回
       gold: 300,
       income: civ.baseIncome,
       pop: 0,
@@ -347,6 +349,12 @@ function tickSim(state, dt) {
     // 被动能量回复：+12 / 秒（比按击杀更靠谱，保证一局至少能放 1-2 次大招）
     p.energy = Math.min(9999, (p.energy || 0) + 12 * dt);
 
+    // 基地被动回血：脱战 5 秒 + baseRegen > 0 + 未爆 + 未满血
+    if (p.baseRegen > 0 && p.baseHp > 0 && p.baseHp < p.baseHpMax
+        && state.time - (p.lastHitTime || -999) > 5.0) {
+      p.baseHp = Math.min(p.baseHpMax, p.baseHp + p.baseRegen * dt);
+    }
+
     // 出兵队列
     while (p.queue.length && p.queue[0].ready <= state.time) {
       const q = p.queue.shift();
@@ -375,7 +383,7 @@ function tickSim(state, dt) {
         const finishAtZom = e.dir > 0 && e.x >= HQ_ZOM_X - 30;
         if (finishAtHK || finishAtZom) {
           const target = nearestBase(state, enemy, e.x);
-          if (target) target.baseHp -= 250;
+          if (target) { target.baseHp -= 250; target.lastHitTime = state.time; }
           state.effects.push({
             id: state.nextEffectId++, kind: "fire_burst",
             x: e.x, y: 0, r: 60, life: 0.7, initLife: 0.7,
@@ -600,6 +608,7 @@ function tickSim(state, dt) {
 
         if (targetBase) {
           nearBase.baseHp -= u.def.dmg * atkMul;
+          nearBase.lastHitTime = state.time;
           // 基地也来个弹道视觉
           if (isLobber) {
             state.projectiles.push({

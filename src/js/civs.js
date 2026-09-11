@@ -126,6 +126,7 @@ const CIVS = {
     desc:"经济增长快、后期单兵最强。前期节奏偏慢，需要靠钱压过去。",
     color:"#1e5599", accent:"#e0ba62",
     baseIncome: 6.0, baseCap: 12,
+    baseRegen: 5.0,   // 前期最弱，回血偏快（HP/秒，脱战 5 秒后）
     buildings: {
       [B.HQ]:     { name:"总部大厦",  cost:0,   cap:1,  hp:1200, effect:{} },
       [B.INCOME]: { name:"金融中心",  cost:220, cap:6,  effect:{ income:+5 } },
@@ -154,6 +155,7 @@ const CIVS = {
     desc:"暴兵流。所有单位便宜、出得快、单体弱，靠数量堆死。",
     color:"#7d4c1c", accent:"#c9a25a",
     baseIncome: 5.5, baseCap: 20,   // 人口上限更高
+    baseRegen: 2.5,                  // 前期强，回血最慢
     buildings: {
       [B.HQ]:     { name:"劏房大厦",  cost:0,   cap:1,  hp:1000, effect:{} },
       [B.INCOME]: { name:"拾荒场",   cost:180, cap:6,  effect:{ income:+3 } },
@@ -182,6 +184,7 @@ const CIVS = {
     desc:"均衡型。中期最强的装甲部队，缺点是造价平均偏高。",
     color:"#2e6e4a", accent:"#c7ac6c",
     baseIncome: 5.0, baseCap: 14,
+    baseRegen: 3.5,                  // 均衡型
     buildings: {
       [B.HQ]:     { name:"警署总部", cost:0,   cap:1,  hp:1100, effect:{} },
       [B.INCOME]: { name:"税关",     cost:200, cap:6,  effect:{ income:+4 } },
@@ -210,6 +213,7 @@ const CIVS = {
     desc:"原教旨主义丧尸。均衡：普通尸海 + 巨怪 + 投石机，经典还原。",
     color:"#5a1a1a", accent:"#7fa03a",
     baseIncome: 5.5, baseCap: 14,
+    baseRegen: 3.5,                  // 均衡型
     buildings: {
       [B.HQ]:     { name:"僵尸大厦", cost:0,   cap:1,  hp:1100, effect:{} },
       [B.INCOME]: { name:"腐尸池",   cost:200, cap:6,  effect:{ income:+4 } },
@@ -238,6 +242,7 @@ const CIVS = {
     desc:"跳跃、穿透、招魂。移速高，单兵脆但机动性无解。",
     color:"#4a1a4a", accent:"#e08cff",
     baseIncome: 5.0, baseCap: 12,
+    baseRegen: 3.0,                  // 机动强，回血中等偏慢
     buildings: {
       [B.HQ]:     { name:"茅山庙",    cost:0,   cap:1,  hp:950,  effect:{} },
       [B.INCOME]: { name:"金山银铺",  cost:180, cap:6,  effect:{ income:+4 } },
@@ -266,6 +271,7 @@ const CIVS = {
     desc:"高科技丧尸。前期弱，一旦上 T2 全场溅射毒气，团战无敌。",
     color:"#204a2a", accent:"#66ff88",
     baseIncome: 4.5, baseCap: 12,
+    baseRegen: 4.5,                  // 前期弱，回血偏快
     buildings: {
       [B.HQ]:     { name:"生化研究所", cost:0,   cap:1,  hp:1050, effect:{} },
       [B.INCOME]: { name:"病株农场",   cost:200, cap:6,  effect:{ income:+4 } },
