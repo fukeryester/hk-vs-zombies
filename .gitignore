@@ -1,0 +1,14 @@
+# git
+.git/
+# build outputs
+dist/
+*.zip
+# runtime artifacts
+.env
+# platform SDK copies (fetched at runtime from platform)
+gamehub-*.js
+agent.md
+# editor
+.vscode/
+.idea/
+*.log

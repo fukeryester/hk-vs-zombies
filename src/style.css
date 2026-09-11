@@ -1,0 +1,451 @@
+/* 香港大战僵尸 · 主题样式
+   参照 Zombie Trailer Park 的粗黑描边 + 沙黄铁锈 + 卡通感 */
+
+:root{
+  --ink:#1a120b;
+  --paper:#f4e4c2;
+  --paper-dk:#e5cf9d;
+  --hk:#1e5599;         /* 香港阵营蓝 */
+  --hk-dk:#0e2f5a;
+  --zom:#5a1a1a;         /* 僵尸阵营暗红 */
+  --zom-dk:#2b0808;
+  --rust:#a4471d;
+  --sun:#f2b23d;
+  --grass:#7f9a3a;
+  --dirt:#8f6b41;
+  --stroke:#221812;
+  --danger:#c93c3c;
+  --good:#4c9c40;
+  --shadow:0 4px 0 #2a1a10, 0 12px 24px rgba(0,0,0,.3);
+}
+
+*{ box-sizing:border-box; }
+html,body{ margin:0; padding:0; height:100%; overflow:hidden; }
+body{
+  font-family: "微软雅黑","Microsoft YaHei","PingFang SC","Helvetica Neue",Arial,sans-serif;
+  color: var(--ink);
+  background:
+    radial-gradient(ellipse at 30% 20%, #f8ecc8 0%, #dcc389 50%, #9c7a3d 100%);
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+}
+button{ font-family:inherit; }
+
+#app{ position:relative; width:100vw; height:100vh; overflow:hidden; }
+
+.screen{
+  position:absolute; inset:0;
+  display:none;
+  padding: 24px;
+  overflow: auto;
+}
+.screen.active{ display:flex; flex-direction: column; }
+
+/* ===========================================================
+   通用按钮
+=========================================================== */
+.btn{
+  display:inline-block;
+  border:3px solid var(--stroke);
+  background: linear-gradient(#fff8de, #efd691);
+  color: var(--ink);
+  font-weight: 800;
+  padding: 10px 18px;
+  font-size: 16px;
+  cursor: pointer;
+  border-radius: 8px;
+  box-shadow: 0 3px 0 var(--stroke), 0 6px 12px rgba(0,0,0,.2);
+  transition: transform .05s ease, box-shadow .05s ease;
+  text-shadow: 1px 1px 0 rgba(255,255,255,.4);
+}
+.btn:hover{ filter: brightness(1.06); }
+.btn:active{ transform: translateY(2px); box-shadow: 0 1px 0 var(--stroke); }
+.btn.primary{
+  background: linear-gradient(#ffcf68, var(--sun) 70%, #d8871c);
+  color:#3a1a05;
+}
+.btn.tiny{ padding: 6px 10px; font-size: 13px; box-shadow: 0 2px 0 var(--stroke); }
+.btn.ghost{
+  background: rgba(255,255,255,.35);
+  border-color: rgba(0,0,0,.5);
+  box-shadow: 0 2px 0 rgba(0,0,0,.3);
+}
+.btn:disabled{ opacity:.5; cursor:not-allowed; filter:grayscale(.6); }
+
+/* ===========================================================
+   主菜单
+=========================================================== */
+#menu-screen{ align-items:center; justify-content:center; text-align:center; }
+.logo{
+  font-size: clamp(48px, 8vw, 96px);
+  font-weight: 900;
+  color:#8f2e1c;
+  text-shadow:
+    2px 2px 0 #f6c86a,
+    4px 4px 0 var(--stroke),
+    0 10px 30px rgba(0,0,0,.4);
+  letter-spacing: 6px;
+  margin: 0 0 16px;
+  transform: rotate(-2deg);
+}
+.logo .vs{
+  color: #1e5599;
+  font-size: 0.7em;
+  margin: 0 8px;
+  display: inline-block;
+  transform: rotate(3deg);
+}
+.tagline{
+  font-size: 20px;
+  color: var(--rust);
+  font-weight: 700;
+  margin: 0 0 40px;
+  text-shadow: 1px 1px 0 #fff5cc;
+}
+.menu-actions{
+  display:flex; flex-direction: column; gap: 14px;
+  width: min(420px, 90vw);
+}
+.menu-actions .btn{ font-size: 18px; padding: 14px 20px; }
+.menu-footer{
+  position: fixed; left:0; right:0; bottom: 12px;
+  display:flex; justify-content: space-between; padding: 0 20px;
+  font-size: 13px; color: #6a4a2a; font-weight: 600;
+}
+
+/* ===========================================================
+   联机大厅
+=========================================================== */
+#lobby-screen{ padding: 20px; }
+.lobby-head{
+  display:flex; align-items:center; gap: 16px;
+  padding-bottom: 16px; border-bottom: 3px dashed var(--stroke);
+}
+.lobby-head h2{ flex:1; margin:0; font-size: 24px; }
+.lobby-head .code{
+  font-family: "Courier New", monospace;
+  font-size: 32px; font-weight: 900;
+  padding: 6px 20px;
+  border: 3px solid var(--stroke);
+  background: #fff8de;
+  border-radius: 8px;
+  letter-spacing: 4px;
+}
+.lobby-body{
+  flex:1;
+  display:grid; grid-template-columns: 1fr 1.6fr 1fr;
+  gap: 16px; margin-top: 16px;
+}
+.lobby-side{
+  border: 3px solid var(--stroke);
+  border-radius: 12px;
+  padding: 16px;
+  background: rgba(255,255,255,.5);
+}
+.lobby-side[data-side="hk"]{ background: rgba(30,85,153,0.12); }
+.lobby-side[data-side="zombie"]{ background: rgba(90,26,26,0.12); }
+.lobby-side h3{ margin: 0 0 12px; font-size: 20px; }
+.slot{
+  border: 3px dashed var(--stroke);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 10px;
+  min-height: 70px;
+  cursor: pointer;
+  transition: background .15s;
+}
+.slot:hover{ background: rgba(255,255,255,.5); }
+.slot.occupied{ border-style: solid; background: rgba(255,255,255,.7); cursor: default; }
+.slot.me{ box-shadow: 0 0 0 3px var(--sun); }
+.slot .who{ font-weight: 800; font-size: 15px; margin-bottom: 4px; }
+.slot .civ{ font-size: 13px; color: var(--rust); }
+.slot .empty{ color:#888; font-style: italic; text-align:center; padding: 10px; }
+
+.lobby-mid{
+  display:flex; flex-direction: column; gap: 12px;
+  padding: 16px;
+  border: 3px solid var(--stroke);
+  border-radius: 12px;
+  background: rgba(255,255,255,.7);
+  overflow-y: auto;
+}
+.mode-picker{ display:flex; align-items:center; gap:10px; }
+.mode-picker select{
+  flex:1; padding: 8px; border:2px solid var(--stroke); border-radius: 6px;
+  font-family: inherit; font-size: 15px; background: white;
+}
+.fill-ai{ font-size: 14px; }
+.civ-picker{
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+}
+.civ-card{
+  border: 3px solid var(--stroke);
+  border-radius: 10px;
+  padding: 10px;
+  cursor: pointer;
+  background: white;
+  transition: transform .1s;
+  display:flex; flex-direction: column;
+  min-height: 90px;
+}
+.civ-card:hover{ transform: translateY(-2px); }
+.civ-card.selected{
+  background: var(--sun);
+  box-shadow: 0 0 0 3px var(--stroke), 0 4px 0 var(--stroke);
+}
+.civ-card .civ-name{ font-weight: 900; font-size: 15px; }
+.civ-card .civ-desc{ font-size: 12px; color:#5a3a1a; margin-top: 4px; line-height: 1.35; }
+.civ-card .civ-side{ font-size: 11px; opacity: .7; }
+
+.hint{ font-size: 13px; color:#666; text-align:center; margin: 4px 0; }
+
+/* ===========================================================
+   加入房间对话框
+=========================================================== */
+#join-screen{ align-items: center; justify-content: center; }
+.dialog{
+  background: var(--paper);
+  border: 4px solid var(--stroke);
+  border-radius: 16px;
+  padding: 24px;
+  width: min(520px, 92vw);
+  box-shadow: var(--shadow);
+}
+.dialog h2{ margin-top: 0; }
+.dialog input{
+  width: 100%; padding: 12px; font-size: 20px;
+  border: 3px solid var(--stroke);
+  border-radius: 8px;
+  font-family: "Courier New", monospace;
+  letter-spacing: 6px; text-transform: uppercase;
+  text-align: center;
+}
+.dialog-actions{
+  display:flex; justify-content:flex-end; gap: 10px; margin-top: 16px;
+}
+.dialog-list{ margin-top: 16px; }
+.dialog-list h3{ font-size: 15px; margin: 0 0 8px; }
+#join-list{
+  max-height: 200px; overflow-y: auto;
+  border: 2px dashed var(--stroke);
+  border-radius: 8px;
+  padding: 8px;
+  background: rgba(255,255,255,.4);
+}
+.room-row{
+  display:flex; justify-content: space-between; align-items:center;
+  padding: 6px 10px; margin-bottom: 4px;
+  background: white; border-radius: 6px;
+  border: 2px solid var(--stroke);
+  cursor: pointer;
+}
+.room-row:hover{ background: var(--sun); }
+.room-row .rc{ font-family: monospace; font-weight: 800; letter-spacing: 3px; }
+
+/* ===========================================================
+   游戏画面
+=========================================================== */
+#play-screen{ padding: 0; }
+.hud-top{
+  display:flex; align-items:center; gap: 12px;
+  padding: 8px 16px;
+  background: linear-gradient(#3a2410, #221510);
+  color: white;
+  border-bottom: 3px solid #000;
+}
+.hp-bar{
+  flex: 1;
+  display:flex; align-items:center; gap: 8px;
+  font-weight: 800;
+}
+.hp-bar .hp-label{ font-size: 16px; }
+.hp-bar .hp-value{ font-size: 13px; opacity: .9; min-width: 90px; }
+.hp-bar .hp-fill{
+  flex: 1;
+  height: 22px;
+  background: #111;
+  border: 2px solid #000;
+  border-radius: 4px;
+  overflow: hidden;
+  box-shadow: inset 0 2px 4px rgba(0,0,0,.6);
+}
+.hp-bar .hp-fg{
+  height: 100%;
+  transition: width .3s ease;
+  background: linear-gradient(#5cd66d, #2a8c3a);
+}
+.hp-hk .hp-fg{ background: linear-gradient(#4c8fdc, #1e5599); }
+.hp-zom .hp-fg{ background: linear-gradient(#d05555, #7a1e1e); }
+.hp-zom{ flex-direction: row-reverse; }
+.hp-zom .hp-fg{ float: right; }
+
+.hud-center{
+  display:flex; gap: 6px; align-items: center;
+}
+.tick-badge{
+  padding: 4px 10px; background: #000; border-radius: 4px;
+  font-family: monospace; font-size: 12px; color: #ffdd66;
+  min-width: 60px; text-align:center;
+}
+
+#game-canvas{
+  display: block;
+  flex: 1;
+  width: 100%;
+  height: auto;
+  background: linear-gradient(180deg, #e5c780 0%, #b98d47 55%, #7a5220 100%);
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+}
+
+.hud-bottom{
+  background: linear-gradient(#221510, #3a2410);
+  color: white;
+  border-top: 3px solid #000;
+  padding: 8px;
+  min-height: 120px;
+}
+.player-strip{
+  display:flex; gap: 10px; height: 100%;
+  overflow-x: auto;
+}
+.player-panel{
+  flex-shrink: 0;
+  min-width: 320px;
+  border: 2px solid #000;
+  border-radius: 8px;
+  background: rgba(0,0,0,.35);
+  padding: 6px 8px;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.player-panel.me{ border-color: var(--sun); box-shadow: 0 0 12px rgba(242,178,61,.5); }
+.player-panel .pp-head{
+  display:flex; justify-content: space-between; align-items: center;
+  font-size: 12px; font-weight: 800;
+}
+.player-panel .pp-civ{ opacity: .8; }
+.pp-res{
+  display:flex; gap: 12px; font-size: 12px; font-family: monospace;
+  padding: 2px 0;
+}
+.pp-res span{ display:inline-flex; align-items:center; gap: 3px; }
+.pp-res .lo{ color: #ff8; }
+.pp-res .hi{ color: #6f6; }
+.pp-buttons{
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(56px, 1fr));
+  gap: 3px;
+  margin-top: 2px;
+}
+.pp-btn{
+  border: 2px solid #000;
+  background: linear-gradient(#e8c47b, #b47a2a);
+  color: #2a1200;
+  padding: 3px 4px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 800;
+  text-align: center;
+  line-height: 1.1;
+  transition: transform .05s;
+  position: relative;
+  overflow: hidden;
+}
+.pp-btn:hover{ filter: brightness(1.1); }
+.pp-btn:active{ transform: translateY(1px); }
+.pp-btn.disabled{ opacity: .4; cursor: not-allowed; filter: grayscale(.7); }
+.pp-btn.skill{ background: linear-gradient(#e874a8, #7a1e5a); color: white; }
+.pp-btn.building{ background: linear-gradient(#a0d0f0, #4478b0); color: white; }
+.pp-btn .cost{ font-size: 9px; opacity: .8; display:block; }
+.pp-btn .hk{ font-size: 8px; opacity: .6; }
+
+.pp-energy{
+  height: 6px;
+  background: #333;
+  border-radius: 3px;
+  overflow: hidden;
+  margin-top: 2px;
+}
+.pp-energy .fg{
+  height: 100%;
+  background: linear-gradient(90deg, #f6a13d, #ff5722);
+  transition: width .2s;
+}
+
+/* ===========================================================
+   飘字与结算
+=========================================================== */
+.floaters{
+  position: absolute; inset: 0; pointer-events: none;
+  overflow: hidden;
+}
+.floater{
+  position: absolute;
+  font-weight: 900;
+  text-shadow: 2px 2px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000;
+  animation: floatUp 1.5s ease-out forwards;
+  color: #ffdd44;
+  font-size: 18px;
+}
+@keyframes floatUp {
+  0% { transform: translateY(0) scale(0.8); opacity: 0; }
+  20%{ transform: translateY(-10px) scale(1.15); opacity: 1; }
+  100%{ transform: translateY(-70px) scale(0.9); opacity: 0; }
+}
+
+/* 成就 toast 由平台推送，游戏内也自绘一份 */
+.toast{
+  position: absolute;
+  right: 20px; top: 80px;
+  background: linear-gradient(#3a1a10, #6b3018);
+  color: #ffe4a0;
+  border: 3px solid var(--stroke);
+  border-radius: 10px;
+  padding: 12px 16px;
+  font-weight: 800;
+  box-shadow: var(--shadow);
+  animation: slideIn .4s ease, slideOut .4s ease 3.6s forwards;
+  z-index: 100;
+}
+@keyframes slideIn { from{ transform: translateX(120%); } to { transform: translateX(0); } }
+@keyframes slideOut { to { transform: translateX(120%); opacity: 0; } }
+
+#end-screen{ align-items:center; justify-content:center; }
+.end-dialog{ max-width: 680px; width: min(680px, 92vw); }
+#end-title{ text-align:center; font-size: 40px; color: #8f2e1c; }
+.end-summary{
+  display:grid; grid-template-columns: repeat(4, 1fr);
+  gap: 8px; margin: 12px 0;
+}
+.end-summary .metric{
+  text-align:center;
+  border: 2px solid var(--stroke);
+  border-radius: 8px;
+  padding: 8px 4px;
+  background: rgba(255,255,255,.4);
+}
+.end-summary .metric .k{ font-size: 12px; color: #644; }
+.end-summary .metric .v{ font-size: 20px; font-weight: 900; color:#4a2010; }
+.end-history{
+  margin-top: 12px;
+  max-height: 200px; overflow-y: auto;
+  border: 2px dashed var(--stroke);
+  border-radius: 8px;
+  padding: 8px;
+  background: rgba(255,255,255,.3);
+}
+.end-history h4{ margin: 0 0 8px; font-size: 14px; }
+.hrow{ display:flex; justify-content:space-between; font-size: 12px; padding: 4px 6px; border-bottom: 1px dotted #aaa; }
+
+.help-dialog{ max-width: 620px; }
+.help-list{ font-size: 15px; line-height: 1.9; padding-left: 20px; }
+.help-list b{ color: #8f2e1c; }
+
+/* 响应式 */
+@media (max-width: 900px){
+  .lobby-body{ grid-template-columns: 1fr; }
+  .player-panel{ min-width: 240px; }
+}

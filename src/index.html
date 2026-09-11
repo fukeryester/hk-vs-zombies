@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>香港大战僵尸</title>
+  <link rel="stylesheet" href="style.css?v=1">
+</head>
+<body>
+  <div id="app">
+    <!-- ============= 主菜单 ============= -->
+    <section id="menu-screen" class="screen active">
+      <h1 class="logo">香港<span class="vs">大战</span>僵尸</h1>
+      <p class="tagline">拾荒·建筑·爆兵·收割 · 一条中路见真章</p>
+      <div class="menu-actions">
+        <button class="btn primary" data-action="quick-1v1">快速开局 1v1（vs AI）</button>
+        <button class="btn" data-action="quick-2v2">2v2 混战（vs AI）</button>
+        <button class="btn" data-action="host">创建联机房间</button>
+        <button class="btn" data-action="join">加入房间</button>
+        <button class="btn ghost" data-action="help">怎么玩</button>
+      </div>
+      <div class="menu-footer">
+        <span id="menu-account">未登录（本地模式）</span>
+        <span class="build">v0.1 · GameHub 版</span>
+      </div>
+    </section>
+
+    <!-- ============= 联机大厅 ============= -->
+    <section id="lobby-screen" class="screen">
+      <header class="lobby-head">
+        <button class="btn ghost" data-action="lobby-back">← 返回</button>
+        <h2 id="lobby-title">房间</h2>
+        <div id="lobby-code" class="code">------</div>
+      </header>
+      <div class="lobby-body">
+        <div class="lobby-side" data-side="hk">
+          <h3>香港阵营</h3>
+          <div class="slot" data-team="hk" data-slot="0"></div>
+          <div class="slot" data-team="hk" data-slot="1"></div>
+        </div>
+        <div class="lobby-mid">
+          <div class="mode-picker">
+            <label>模式</label>
+            <select id="lobby-mode">
+              <option value="1v1">1v1（一对一）</option>
+              <option value="2v2">2v2（二对二）</option>
+            </select>
+          </div>
+          <div class="civ-picker" id="lobby-civ-picker"></div>
+          <div class="fill-ai">
+            <label><input type="checkbox" id="lobby-fill-ai" checked> 空位由 AI 顶替</label>
+          </div>
+          <button id="lobby-start" class="btn primary">开始对战</button>
+          <p class="hint" id="lobby-hint">房主选择模式与开始时机</p>
+        </div>
+        <div class="lobby-side" data-side="zombie">
+          <h3>僵尸阵营</h3>
+          <div class="slot" data-team="zombie" data-slot="0"></div>
+          <div class="slot" data-team="zombie" data-slot="1"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============= 加入房间对话框 ============= -->
+    <section id="join-screen" class="screen">
+      <div class="dialog">
+        <h2>输入房间号</h2>
+        <input id="join-code" maxlength="6" placeholder="6 位房间号（如 AB3K7Q）">
+        <div class="dialog-actions">
+          <button class="btn ghost" data-action="join-back">取消</button>
+          <button class="btn primary" data-action="join-confirm">加入</button>
+        </div>
+        <div class="dialog-list">
+          <h3>可加入的房间</h3>
+          <div id="join-list">正在加载…</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============= 游戏画面 ============= -->
+    <section id="play-screen" class="screen">
+      <div class="hud-top">
+        <div class="hp-bar hp-hk">
+          <span class="hp-label">🏙️ 香港</span>
+          <div class="hp-fill"><div class="hp-fg"></div></div>
+          <span class="hp-value">100 / 100</span>
+        </div>
+        <div class="hud-center">
+          <div class="tick-badge" id="tick-badge">t=0</div>
+          <button class="btn tiny" id="btn-speed">1×</button>
+          <button class="btn tiny" id="btn-pause">⏸</button>
+          <button class="btn tiny ghost" id="btn-quit">离场</button>
+        </div>
+        <div class="hp-bar hp-zom">
+          <span class="hp-value">100 / 100</span>
+          <div class="hp-fill"><div class="hp-fg"></div></div>
+          <span class="hp-label">🧟 僵尸</span>
+        </div>
+      </div>
+
+      <canvas id="game-canvas" width="1280" height="560"></canvas>
+
+      <div class="hud-bottom">
+        <div class="player-strip" id="player-strip"></div>
+      </div>
+
+      <div id="floaters" class="floaters"></div>
+    </section>
+
+    <!-- ============= 结算 ============= -->
+    <section id="end-screen" class="screen">
+      <div class="dialog end-dialog">
+        <h2 id="end-title">胜利！</h2>
+        <div id="end-summary" class="end-summary"></div>
+        <div id="end-history" class="end-history"></div>
+        <div class="dialog-actions">
+          <button class="btn ghost" data-action="end-menu">返回菜单</button>
+          <button class="btn primary" data-action="end-again">再来一局</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============= 帮助 ============= -->
+    <section id="help-screen" class="screen">
+      <div class="dialog help-dialog">
+        <h2>怎么玩</h2>
+        <ul class="help-list">
+          <li>💰 <b>金钱</b>被动增长，用来买兵与建筑。</li>
+          <li>🏠 <b>民房</b>增加人口上限；<b>拾荒场</b>增加金钱速率。</li>
+          <li>⚔️ 出兵按 <b>1~9 快捷键</b> 或点击底部按钮。要看兵种的<b>建造前提</b>。</li>
+          <li>🔥 击杀累积 <b>Yee-Haw 能量</b>，够了就放<b>大招</b>——农民起义/收割机/空袭。</li>
+          <li>🎯 打爆对面的基地血条即胜利，己方血条为 0 即失败。</li>
+          <li>🧠 每个"文明"有独特兵种、建筑与打法（暴兵流 / 经济流 / 均衡流 / 机动流…）。</li>
+        </ul>
+        <div class="dialog-actions">
+          <button class="btn primary" data-action="help-close">明白啦</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- 平台 SDK（同域下自动带 Cookie） -->
+  <script src="/static/gamehub-room.js"></script>
+  <script src="/static/gamehub-stats.js"></script>
+  <script src="/static/gamehub-matches.js"></script>
+
+  <!-- 游戏 -->
+  <script src="js/civs.js?v=1"></script>
+  <script src="js/audio.js?v=1"></script>
+  <script src="js/sim.js?v=1"></script>
+  <script src="js/ai.js?v=1"></script>
+  <script src="js/render.js?v=1"></script>
+  <script src="js/input.js?v=1"></script>
+  <script src="js/net.js?v=1"></script>
+  <script src="js/stats.js?v=1"></script>
+  <script src="js/matches.js?v=1"></script>
+  <script src="js/hud.js?v=1"></script>
+  <script src="js/lobby.js?v=1"></script>
+  <script src="js/main.js?v=1"></script>
+</body>
+</html>
