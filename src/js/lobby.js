@@ -240,10 +240,12 @@ const Lobby = (function () {
   // 房主开始游戏：把最终 config 广播给所有人
   function hostStartGame() {
     if (!iAmHost || !state) return null;
+    // 勾了"空位由 AI 顶替"就自动补齐，别再拦人
+    if (state.fillAI) { fillAISlots(); recalcRows(); }
     // 确保各队都有单位
     const hk = state.slots.filter(s => s.team === "hk").length;
     const zom = state.slots.filter(s => s.team === "zom").length;
-    if (hk === 0 || zom === 0) { HUD.showToast("双方都要有玩家或 AI"); return null; }
+    if (hk === 0 || zom === 0) { HUD.showToast("双方都要有玩家或 AI；请勾选『空位由 AI 顶替』或手动占位"); return null; }
 
     const seed = Math.floor(Math.random() * 0xffffffff);
     // 输出简洁 config

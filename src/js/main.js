@@ -365,6 +365,10 @@
       if (App.isLocal) {
         const st = Lobby.getState();
         if (!st) return;
+        // fillAI 一定为 true（单机强制），走一次补齐保证双方都有单位
+        if (typeof Lobby.hostToggleFillAI === "function" && st.fillAI) {
+          Lobby.hostToggleFillAI(true); // 会调 fillAISlots + recalcRows
+        }
         const hk = st.slots.filter(s => s.team === "hk").length;
         const zom = st.slots.filter(s => s.team === "zom").length;
         if (hk === 0 || zom === 0) { HUD.showToast("双方都要有玩家或 AI"); return; }
