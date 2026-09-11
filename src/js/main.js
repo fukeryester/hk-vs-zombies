@@ -29,7 +29,24 @@
     document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
     const el = document.getElementById(name + "-screen");
     if (el) el.classList.add("active");
+    if (name === "play") setTimeout(resizeCanvasToWrap, 0);
   }
+
+  // ------------- Canvas 自适应视口 -------------
+  function resizeCanvasToWrap() {
+    const canvas = document.getElementById("game-canvas");
+    const wrap = canvas?.parentElement;
+    if (!canvas || !wrap) return;
+    const rect = wrap.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+    const aspect = canvas.width / canvas.height;   // 1280/560
+    let w = rect.width, h = rect.height;
+    if (w / h > aspect) { w = h * aspect; }
+    else                 { h = w / aspect; }
+    canvas.style.width  = Math.floor(w) + "px";
+    canvas.style.height = Math.floor(h) + "px";
+  }
+  window.addEventListener("resize", resizeCanvasToWrap);
 
   // ------------- 初始化 -------------
   window.addEventListener("load", async () => {
@@ -39,6 +56,21 @@
     bindLobbyUI();
     bindPlayUI();
     bindHelpUI();
+
+    // 后台预热美术资源（不阻塞菜单）
+    App.assetsReady = false;
+    if (typeof loadAssets === "function") {
+      loadAssets((loaded, total) => {
+        const acc = document.getElementById("menu-account");
+        if (acc && !App.assetsReady) acc.textContent = `资源加载中… ${loaded}/${total}`;
+      }).then(() => {
+        App.assetsReady = true;
+        const acc = document.getElementById("menu-account");
+        if (acc && !Stats.enabled?.()) acc.textContent = "未登录 · 本地模式";
+      });
+    } else {
+      App.assetsReady = true;
+    }
 
     // GameHub 接入（游戏内）
     App.gameId = inferGameId();
