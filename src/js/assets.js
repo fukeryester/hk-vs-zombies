@@ -67,7 +67,7 @@ function loadAssets(onProgress) {
       resolve();
     };
     img.onerror = () => { console.warn("[assets] missing anim:", spec.path); tick(spec.key); resolve(); };
-    img.src = spec.path + "?v=3";
+    img.src = spec.path + "?v=4";
   });
 
   return Promise.all([

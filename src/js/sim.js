@@ -297,8 +297,12 @@ function spawnUnit(state, p, unitId, opt) {
   const civ = CIVS[p.civId];
   const def = civ.units[unitId];
   if (!def) return null;
-  opt = opt || {};
+  opt = opt != null ? opt : {};
   const isHK = p.team === "hk";
+  // 出生位置抖动（确定性 RNG，联机同步安全）：避免所有兵在完全同一点叠罗汉
+  const spawnRng = makeRng((state.nextUnitId | 0) * 2654435761 + p.seat * 977 + (state.seed | 0));
+  const jitterX = (spawnRng() - 0.5) * 26;   // ±13 px
+  const jitterY = (spawnRng() - 0.5) * 22;   // ±11 px
   const u = {
     id: state.nextUnitId++,
     seat: p.seat,
@@ -306,8 +310,8 @@ function spawnUnit(state, p, unitId, opt) {
     civId: p.civId,
     unitId,
     def,
-    x: opt.x != null ? opt.x : (isHK ? HQ_HK_X + 20 : HQ_ZOM_X - 20),
-    y: opt.y != null ? opt.y : (p.row * 60),
+    x: opt.x != null ? opt.x : (isHK ? HQ_HK_X + 20 + jitterX : HQ_ZOM_X - 20 + jitterX),
+    y: opt.y != null ? opt.y : (p.row * 60 + jitterY),
     row: p.row,
     dir: isHK ? +1 : -1,
     hp: def.hp,

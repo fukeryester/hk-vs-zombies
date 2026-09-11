@@ -421,7 +421,8 @@ function drawBase(ctx, x, groundY, civId, team, hpRatio, scale, player) {
 // 单位
 // ==================================================================
 function drawUnit(ctx, u, tShow) {
-  const { cx, cy } = toCanvas(u.x, 0, u.row || 0);
+  // 出生 y 抖动通过 u.y 传入，视觉上给一点上下错开
+  const { cx, cy } = toCanvas(u.x, u.y || 0, u.row || 0);
   const rowMul = scaleForRow(u.row || 0);
   const dir = u.dir;
   const H = heightForUnit(u) * rowMul;
@@ -494,24 +495,18 @@ function drawUnit(ctx, u, tShow) {
     const flipX = dir !== +1;
     if (flipX) ctx.scale(-1, 1);
 
-    // 像素完美关闭平滑
+    // 绘制的是彩绘素材（非 pixel art），开启高质量平滑，避免"像素块粒子"
     const prevSmooth = ctx.imageSmoothingEnabled;
-    ctx.imageSmoothingEnabled = false;
+    const prevQuality = ctx.imageSmoothingQuality;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
 
     // 主体
     ctx.drawImage(anim.img,
       frame * anim.fw, 0, anim.fw, anim.fh,   // src rect
       -W / 2, -targetH, W, targetH);          // dst rect
 
-    // 文明染色：source-atop 叠加，只覆盖有像素的地方
-    const tint = CIV_TINT[u.civId];
-    if (tint) {
-      ctx.globalCompositeOperation = "source-atop";
-      ctx.fillStyle = tint;
-      ctx.fillRect(-W / 2, -targetH, W, targetH);
-      ctx.globalCompositeOperation = "source-over";
-    }
-    // 魅惑覆盖
+    // 魅惑覆盖（只在被魅惑时短暂使用）
     if (u.charmedBy) {
       ctx.globalCompositeOperation = "source-atop";
       ctx.fillStyle = "rgba(220,90,220,0.30)";
@@ -520,6 +515,7 @@ function drawUnit(ctx, u, tShow) {
     }
 
     ctx.imageSmoothingEnabled = prevSmooth;
+    ctx.imageSmoothingQuality = prevQuality;
   } else {
     // 兜底：老静态图
     const imgKey = imgForUnit(u);
@@ -807,14 +803,16 @@ function render(ctx, snap, tShow, meSeat) {
   // 全屏效果（大招 / 爆炸 / 火团 / 火花）
   snap.effects.forEach(e => drawEffect(ctx, e, tShow));
 
-  // 我方单位金圈
+  // 我方单位归属提示：脚下一个小圆点（比黄圈低调很多，不遮挡人物）
   if (meSeat != null) {
+    ctx.fillStyle = "rgba(255,222,102,0.85)";
+    ctx.strokeStyle = "rgba(60,40,10,0.9)"; ctx.lineWidth = 1;
     snap.units.forEach(u => {
       if (u.seat === meSeat) {
-        const { cx, cy } = toCanvas(u.x, 0, u.row || 0);
-        const H = heightForUnit(u) * scaleForRow(u.row || 0);
-        ctx.strokeStyle = "#ffde66"; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.arc(cx, cy - H * 0.5, H * 0.5 + 4, 0, Math.PI * 2); ctx.stroke();
+        const { cx, cy } = toCanvas(u.x, u.y || 0, u.row || 0);
+        ctx.beginPath();
+        ctx.ellipse(cx, cy + 3, 5, 2, 0, 0, Math.PI * 2);
+        ctx.fill(); ctx.stroke();
       }
     });
   }
