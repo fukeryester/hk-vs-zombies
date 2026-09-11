@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>香港大战僵尸</title>
-  <link rel="stylesheet" href="style.css?v=6">
+  <link rel="stylesheet" href="style.css?v=7">
 </head>
 <body>
   <div id="app">
@@ -17,6 +17,7 @@
         <button class="btn" data-action="quick-2v2">2v2 混战（vs AI）</button>
         <button class="btn" data-action="host">创建联机房间</button>
         <button class="btn" data-action="join">加入房间</button>
+        <button class="btn" data-action="codex">图鉴百科</button>
         <button class="btn ghost" data-action="help">怎么玩</button>
       </div>
       <div class="menu-footer">
@@ -139,6 +140,31 @@
         </div>
       </div>
     </section>
+
+    <!-- ============= 图鉴 ============= -->
+    <section id="codex-screen" class="screen">
+      <header class="codex-head">
+        <button class="btn ghost" data-action="codex-back">← 返回</button>
+        <div>
+          <h2>图鉴百科</h2>
+          <p>文明、兵种、建筑、技能一站式查看</p>
+        </div>
+      </header>
+      <div class="codex-tabs" id="codex-tabs"></div>
+      <div class="codex-hero" id="codex-hero"></div>
+      <section class="codex-block">
+        <h3>兵种</h3>
+        <div class="codex-grid" id="codex-units"></div>
+      </section>
+      <section class="codex-block">
+        <h3>建筑</h3>
+        <div class="codex-grid" id="codex-buildings"></div>
+      </section>
+      <section class="codex-block">
+        <h3>技能</h3>
+        <div class="codex-grid" id="codex-skills"></div>
+      </section>
+    </section>
   </div>
 
   <!-- 平台 SDK（同域下自动带 Cookie） -->
@@ -147,18 +173,18 @@
   <script src="/static/gamehub-matches.js"></script>
 
   <!-- 游戏 -->
-  <script src="js/assets.js?v=9"></script>
-  <script src="js/civs.js?v=7"></script>
+  <script src="js/assets.js?v=10"></script>
+  <script src="js/civs.js?v=8"></script>
   <script src="js/audio.js?v=3"></script>
-  <script src="js/sim.js?v=10"></script>
+  <script src="js/sim.js?v=11"></script>
   <script src="js/ai.js?v=3"></script>
-  <script src="js/render.js?v=9"></script>
+  <script src="js/render.js?v=10"></script>
   <script src="js/input.js?v=3"></script>
   <script src="js/net.js?v=3"></script>
   <script src="js/stats.js?v=3"></script>
   <script src="js/matches.js?v=3"></script>
   <script src="js/hud.js?v=5"></script>
   <script src="js/lobby.js?v=8"></script>
-  <script src="js/main.js?v=8"></script>
+  <script src="js/main.js?v=9"></script>
 </body>
 </html>

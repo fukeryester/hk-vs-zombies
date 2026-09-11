@@ -123,6 +123,16 @@ const CIV_BASE = {
   hk_finance: "base_finance", hk_slum: "base_slum", hk_police: "base_police",
   zom_classic: "base_zomclassic", zom_ghost: "base_zomghost", zom_bio: "base_zombio",
 };
+const BUILDING_ART = {
+  hk: {
+    income: "build_hk_income", pop: "build_hk_pop",
+    tech_a: "build_hk_tech_a", tech_b: "build_hk_tech_b", tech_c: "build_hk_tech_c",
+  },
+  zom: {
+    income: "build_zom_income", pop: "build_zom_pop",
+    tech_a: "build_zom_tech_a", tech_b: "build_zom_tech_b", tech_c: "build_zom_tech_c",
+  },
+};
 
 // ==================================================================
 // 背景 · 单张随机整图（不再左右拼接，也不再撒环境道具）
@@ -230,10 +240,43 @@ function drawPlayerBuildings(ctx, snap) {
         // 距离越靠中路 → 视觉稍微再缩小一点（近端到远端 1.0 → 0.85）
         const distScale = 1 - Math.min(0.15, slot.offsets[i] / 1600);
         const h = slot.height * rowScale * distScale;
-        drawBuildingSilhouette(ctx, cx, cy, h, slot.kind, slot.tiers || 1, color, accent, dirOut < 0);
+        const imgKey = buildingImageKey(p.team, kind);
+        if (imgKey && IMG[imgKey]) {
+          drawBuildingSprite(ctx, cx, cy, h, IMG[imgKey], accent, dirOut < 0);
+        } else {
+          drawBuildingSilhouette(ctx, cx, cy, h, slot.kind, slot.tiers || 1, color, accent, dirOut < 0);
+        }
       }
     }
   }
+}
+
+function buildingImageKey(team, kind) {
+  const side = team === "hk" ? "hk" : "zom";
+  return BUILDING_ART[side]?.[kind] || null;
+}
+
+function drawBuildingSprite(ctx, x, groundY, h, img, accent, flip) {
+  ctx.save();
+  ctx.translate(x, groundY);
+  if (flip) ctx.scale(-1, 1);
+  ctx.fillStyle = "rgba(0,0,0,0.34)";
+  ctx.beginPath();
+  ctx.ellipse(0, 4, h * 0.42, 5, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  const targetH = h;
+  const targetW = targetH * (img.width / img.height);
+  ctx.drawImage(img, -targetW / 2, -targetH, targetW, targetH);
+
+  // 轻微前缘高光，让同阵营建筑群更有层次
+  ctx.globalCompositeOperation = "lighter";
+  ctx.fillStyle = accent ? shade(accent, 0.25) : "rgba(255,230,160,0.12)";
+  ctx.globalAlpha = 0.08;
+  ctx.fillRect(-targetW * 0.18, -targetH * 0.92, targetW * 0.36, targetH * 0.4);
+  ctx.globalCompositeOperation = "source-over";
+  ctx.globalAlpha = 1;
+  ctx.restore();
 }
 
 function drawBuildingSilhouette(ctx, x, groundY, h, kind, tiers, color, accent, flip) {
@@ -818,4 +861,15 @@ function render(ctx, snap, tShow, meSeat) {
   }
 }
 
-window.Render = { R, render, toCanvas };
+function imageKeyForUnitCard(team, arch) {
+  if (team === "zom" && !arch.startsWith("zom") && ZOM_FALLBACK[arch]) return ZOM_FALLBACK[arch];
+  return ARCH_TO_IMG[arch] || "hk_peasant";
+}
+
+window.Render = {
+  R, render, toCanvas,
+  imageKeyForUnitCard,
+  buildingImageKey,
+  baseImageKeyForCiv: (civId) => CIV_BASE[civId],
+  bgImageKeyForCiv: (civId) => CIV_BG[civId],
+};

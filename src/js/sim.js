@@ -196,12 +196,17 @@ function applySkill(state, p, s) {
 
   switch (s.kind) {
     case "summon": {
-      s.units.forEach(([arch, n]) => {
-        // 找一个模板：从 p 的兵里挑该 arch 的最基础兵；兜底就用 p 第一个兵
-        const civ = CIVS[p.civId];
+      const civ = CIVS[p.civId];
+      const summonList = (s.byCiv && s.byCiv[p.civId]) || s.units || [];
+      summonList.forEach(([token, n]) => {
+        // token 既可以是明确 unitId，也可以是通用 arch 名。
         let template = null;
-        for (const [uid, u] of Object.entries(civ.units)) {
-          if (u.arch === arch) { template = { id: uid, def: u }; break; }
+        if (civ.units[token]) {
+          template = { id: token, def: civ.units[token] };
+        } else {
+          for (const [uid, u] of Object.entries(civ.units)) {
+            if (u.arch === token) { template = { id: uid, def: u }; break; }
+          }
         }
         if (!template) {
           const uid = Object.keys(civ.units)[0];

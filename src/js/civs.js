@@ -41,8 +41,14 @@ const SKILLS = {
   // ---- 香港阵营大招 ----
   angry_mob: {
     id:"angry_mob", name:"街坊起义", cost:1200, side:"hk",
-    desc:"立即空投 4 枪手 + 10 铲兵，不占人口。",
-    kind:"summon", units:[["melee_cheap",10],["ranged_light",4]], speedMul:1.15,
+    desc:"立即呼叫一批街坊支援，以近战杂兵为主，只有少量远程火力，不占人口。",
+    kind:"summon",
+    byCiv: {
+      hk_finance: [["intern",12],["broker",2]],
+      hk_slum:    [["urchin",10],["kungfu",4]],
+      hk_police:  [["riot",6],["constable",2]],
+    },
+    speedMul:1.08,
   },
   minibus_rush: {
     id:"minibus_rush", name:"红 van 冲锋", cost:1800, side:"hk",
@@ -137,12 +143,12 @@ const CIVS = {
     },
     units: {
       intern:    U("打工人",    50,  1,  35,  9,  22,  50, 1.0, 0.6, null,      "melee_cheap"),
-      broker:    U("金融经纪",  220, 2,  60, 14,  180, 42, 1.0, 1.0, B.TECH_A,  "ranged_light"),
-      analyst:   U("量化分析师",380, 2,  70, 26,  240, 40, 1.5, 1.2, B.TECH_A,  "ranged_aoe",  { splash:38 }),
+      broker:    U("金融经纪",  240, 2,  46, 10,  180, 36, 1.1, 1.0, B.TECH_A,  "ranged_light"),
+      analyst:   U("量化分析师",380, 2,  58, 20,  240, 36, 1.7, 1.2, B.TECH_A,  "ranged_aoe",  { splash:32 }),
       bodyguard: U("CEO 保镖",  650, 3, 220, 30,  36,  55, 0.9, 1.3, B.TECH_B,  "melee_tank"),
-      quant:     U("投行分析师",950, 5, 260, 55,  260, 48, 1.2, 1.6, B.TECH_B,  "ranged_heavy"),
-      auditor:   U("审计师",    600, 3,  90,  0,  200, 45, 3.0, 1.2, B.TECH_B,  "support",     { support:"convert", dur:5.0 }),
-      ceo:       U("CEO",      1800, 6, 450, 90,  260, 50, 1.4, 2.5, B.TECH_C,  "ranged_heavy"),
+      quant:     U("投行分析师",1000,5, 230, 47,  260, 44, 1.35,1.6, B.TECH_B,  "ranged_heavy"),
+      auditor:   U("审计师",    600, 3,  82,  0,  200, 42, 3.2, 1.2, B.TECH_B,  "support",     { support:"convert", dur:4.6 }),
+      ceo:       U("CEO",      1800, 6, 400, 78,  260, 46, 1.55,2.5, B.TECH_C,  "ranged_heavy"),
     },
     skills: ["gold_rain","angry_mob","chopper_strike"],
   },
@@ -168,9 +174,9 @@ const CIVS = {
       urchin:    U("街童",       35,  1,  22,  6,  20,  62, 0.7, 0.4, null,      "melee_fast"),
       kungfu:    U("拳王阿伯",   130, 2,  85, 15,  26,  56, 0.7, 0.9, B.TECH_A,  "melee_cheap"),
       fishmonger:U("卖鱼佬",     200, 2,  70, 20,  40,  50, 1.0, 1.0, B.TECH_A,  "melee_cheap"),
-      chef:      U("烧腊师傅",   320, 2,  60, 26,  120, 46, 1.1, 1.1, B.TECH_B,  "ranged_aoe",  { splash:24 }),
+      chef:      U("烧腊师傅",   340, 2,  54, 22,  120, 42, 1.25,1.1, B.TECH_B,  "ranged_aoe",  { splash:20 }),
       rickshaw:  U("三轮车队",   500, 3, 180, 30,  30,  70, 0.9, 1.3, B.TECH_B,  "melee_tank"),
-      dai_lo:    U("大佬",       750, 3, 130, 42,  100, 60, 0.9, 1.5, B.TECH_B,  "ranged_light"),
+      dai_lo:    U("大佬",       780, 3, 118, 34,  100, 54, 1.05,1.5, B.TECH_B,  "ranged_light"),
       mahjong:   U("麻雀友",     900, 4, 110,  0,  220, 45, 3.5, 1.6, B.TECH_C,  "support",     { support:"convert", dur:6.0 }),
     },
     skills: ["angry_mob","triad_ambush","chopper_strike"],
@@ -194,13 +200,13 @@ const CIVS = {
       [B.TECH_C]: { name:"重案组",   cost:800, cap:1,  effect:{} },
     },
     units: {
-      constable: U("警员",       80,  1,  50, 10,  100, 50, 1.0, 0.7, null,      "ranged_light"),
+      constable: U("警员",       95,  1,  36,  7,  100, 40, 1.15,0.7, null,      "ranged_light"),
       riot:      U("防暴警察",   240, 2, 140, 16,  30,  46, 0.9, 1.0, B.TECH_A,  "melee_tank"),
-      sniper:    U("狙击手",     420, 2,  70, 45,  340, 44, 1.8, 1.3, B.TECH_A,  "ranged_heavy"),
-      swat:      U("飞虎队",     620, 3, 180, 30,  200, 52, 0.8, 1.4, B.TECH_B,  "ranged_light"),
-      truck:     U("装甲车",     900, 5, 380, 40,  180, 42, 1.0, 1.7, B.TECH_B,  "ranged_heavy",{ splash:20 }),
+      sniper:    U("狙击手",     500, 2,  58, 34,  340, 38, 2.1, 1.3, B.TECH_A,  "ranged_heavy"),
+      swat:      U("飞虎队",     700, 3, 150, 22,  200, 46, 0.95,1.4, B.TECH_B,  "ranged_light"),
+      truck:     U("装甲车",     960, 5, 330, 32,  180, 38, 1.15,1.7, B.TECH_B,  "ranged_heavy",{ splash:16 }),
       negotiator:U("谈判专家",  1100, 3,  90,  0,  180, 45, 3.0, 1.5, B.TECH_B,  "support",     { support:"convert", dur:5.5 }),
-      hero_cop:  U("重案组长",  1600, 5, 320, 60,  220, 55, 1.2, 2.0, B.TECH_C,  "ranged_heavy"),
+      hero_cop:  U("重案组长",  1600, 5, 280, 48,  220, 50, 1.35,2.0, B.TECH_C,  "ranged_heavy"),
     },
     skills: ["angry_mob","chopper_strike","triad_ambush"],
   },
@@ -215,7 +221,7 @@ const CIVS = {
     baseIncome: 5.5, baseCap: 14,
     baseRegen: 3.5,                  // 均衡型
     buildings: {
-      [B.HQ]:     { name:"僵尸大厦", cost:0,   cap:1,  hp:1100, effect:{} },
+      [B.HQ]:     { name:"僵尸大厦", cost:0,   cap:1,  hp:1280, effect:{} },
       [B.INCOME]: { name:"腐尸池",   cost:200, cap:6,  effect:{ income:+4 } },
       [B.POP]:    { name:"墓地",     cost:160, cap:5,  effect:{ pop:+9 } },
       [B.TECH_A]: { name:"废弃医院", cost:250, cap:1,  effect:{} },
@@ -223,9 +229,9 @@ const CIVS = {
       [B.TECH_C]: { name:"病毒源",   cost:800, cap:1,  effect:{} },
     },
     units: {
-      normal:  U("普通僵尸",   60,  1,  40, 10,  22,  40, 1.1, 0.6, null,      "zom_normal"),
-      flea:    U("跳蚤",       160, 1,  55, 14,  22,  60, 1.0, 0.9, B.TECH_A,  "zom_hopper", { jump:150 }),
-      banshee: U("女妖",       320, 2, 120, 22,  22,  70, 0.7, 1.1, B.TECH_A,  "zom_banshee"),
+      normal:  U("普通僵尸",   55,  1,  58, 13,  22,  44, 1.0, 0.6, null,      "zom_normal"),
+      flea:    U("跳蚤",       150, 1,  72, 16,  22,  66, 0.9, 0.9, B.TECH_A,  "zom_hopper", { jump:150 }),
+      banshee: U("女妖",       320, 2, 136, 24,  22,  72, 0.65,1.1, B.TECH_A,  "zom_banshee"),
       giant:   U("巨怪",       800, 4, 500, 55,  36,  30, 1.6, 1.6, B.TECH_B,  "zom_giant",  { splash:40 }),
       cata:    U("投石僵尸",   700, 3, 200, 40,  400, 30, 2.6, 1.5, B.TECH_B,  "zom_cata",   { lobber:true }),
       toxic:   U("毒气僵尸",   360, 2, 100, 18,  22,  42, 1.2, 1.1, B.TECH_B,  "zom_toxic",  { onDeath:"poison_puddle" }),
@@ -244,7 +250,7 @@ const CIVS = {
     baseIncome: 5.0, baseCap: 12,
     baseRegen: 3.0,                  // 机动强，回血中等偏慢
     buildings: {
-      [B.HQ]:     { name:"茅山庙",    cost:0,   cap:1,  hp:950,  effect:{} },
+      [B.HQ]:     { name:"茅山庙",    cost:0,   cap:1,  hp:1120, effect:{} },
       [B.INCOME]: { name:"金山银铺",  cost:180, cap:6,  effect:{ income:+4 } },
       [B.POP]:    { name:"义庄",     cost:150, cap:5,  effect:{ pop:+8 } },
       [B.TECH_A]: { name:"油炸鬼摊", cost:220, cap:1,  effect:{} },
@@ -252,9 +258,9 @@ const CIVS = {
       [B.TECH_C]: { name:"阴阳阵",   cost:700, cap:1,  effect:{} },
     },
     units: {
-      hopping: U("清朝跳僵尸", 100, 1,  60, 12,  22,  50, 1.0, 0.8, null,     "zom_hopper", { jump:80 }),
-      hungry:  U("饿鬼",       180, 1,  40, 18,  60,  75, 0.6, 0.9, B.TECH_A, "zom_ghost"),   // 高攻高速低血
-      oil:     U("油炸鬼",     250, 2,  95, 20, 120,  50, 1.0, 1.1, B.TECH_A, "ranged_aoe",   { splash:25 }),
+      hopping: U("清朝跳僵尸", 90,  1,  70, 14,  22,  54, 0.9, 0.8, null,     "zom_hopper", { jump:80 }),
+      hungry:  U("饿鬼",       170, 1,  52, 20,  60,  80, 0.55,0.9, B.TECH_A, "zom_ghost"),   // 高攻高速低血
+      oil:     U("油炸鬼",     250, 2, 105, 22, 120,  52, 0.95,1.1, B.TECH_A, "ranged_aoe",   { splash:26 }),
       water:   U("水鬼",       400, 2, 160, 24,  30,  55, 0.9, 1.2, B.TECH_B, "zom_toxic",    { onDeath:"poison_puddle" }),
       paper:   U("纸扎人",     500, 3, 220,  0,  220, 40, 2.5, 1.4, B.TECH_B, "support",      { support:"convert", dur:4.5 }),
       fox:     U("狐仙",       900, 4, 280, 44, 180,  55, 1.3, 1.7, B.TECH_C, "zom_banshee"),
@@ -273,7 +279,7 @@ const CIVS = {
     baseIncome: 4.5, baseCap: 12,
     baseRegen: 4.5,                  // 前期弱，回血偏快
     buildings: {
-      [B.HQ]:     { name:"生化研究所", cost:0,   cap:1,  hp:1050, effect:{} },
+      [B.HQ]:     { name:"生化研究所", cost:0,   cap:1,  hp:1250, effect:{} },
       [B.INCOME]: { name:"病株农场",   cost:200, cap:6,  effect:{ income:+4 } },
       [B.POP]:    { name:"培养舱",    cost:160, cap:5,  effect:{ pop:+8 } },
       [B.TECH_A]: { name:"实验大楼",  cost:260, cap:1,  effect:{} },
@@ -281,9 +287,9 @@ const CIVS = {
       [B.TECH_C]: { name:"母体核心",  cost:900, cap:1,  effect:{} },
     },
     units: {
-      infected: U("感染者",    70,  1,  45, 11,  22,  42, 1.0, 0.7, null,      "zom_normal"),
-      spitter:  U("酸液喷射者",280, 2,  90, 22,  180, 44, 1.4, 1.1, B.TECH_A,  "ranged_aoe",  { splash:30 }),
-      mutant:   U("变异体",    500, 3, 220, 34,  32,  40, 1.0, 1.3, B.TECH_A,  "zom_giant"),
+      infected: U("感染者",    60,  1,  60, 13,  22,  46, 0.95,0.7, null,      "zom_normal"),
+      spitter:  U("酸液喷射者",260, 2, 110, 25,  180, 46, 1.25,1.1, B.TECH_A,  "ranged_aoe",  { splash:32 }),
+      mutant:   U("变异体",    500, 3, 240, 38,  32,  42, 0.95,1.3, B.TECH_A,  "zom_giant"),
       bomber:   U("爆膛者",    350, 2,  80,  0,  22,  70, 0.5, 1.0, B.TECH_B,  "zom_toxic",   { onDeath:"explode", explodeDmg:120, explodeR:80 }),
       parasite: U("寄生虫",    220, 1,  60, 16,  22,  90, 0.6, 0.9, B.TECH_B,  "zom_hopper",  { jump:120 }),
       radiator: U("辐射者",    700, 3, 260, 42,  260, 32, 1.8, 1.5, B.TECH_B,  "ranged_heavy",{ splash:22 }),

@@ -16,6 +16,9 @@ const IMG_LIST = [
   // 6 座基地建筑
   "base_finance", "base_slum", "base_police",
   "base_zomclassic", "base_zomghost", "base_zombio",
+  // 可建建筑贴图
+  "build_hk_income", "build_hk_pop", "build_hk_tech_a", "build_hk_tech_b", "build_hk_tech_c",
+  "build_zom_income", "build_zom_pop", "build_zom_tech_a", "build_zom_tech_b", "build_zom_tech_c",
   // 香港单位静态图（兜底/卡面）
   "hk_peasant", "hk_tank", "hk_runner",
   "hk_ranged_light", "hk_ranged_aoe", "hk_ranged_heavy",
@@ -54,7 +57,7 @@ function loadAssets(onProgress) {
     const img = new Image();
     img.onload  = () => { IMG[name] = img; tick(name); resolve(); };
     img.onerror = () => { console.warn("[assets] missing image:", name); tick(name); resolve(); };
-    img.src = "img/" + name + ".png?v=2";
+    img.src = "img/" + name + ".png?v=3";
   });
 
   const loadAnim = (spec) => new Promise(resolve => {

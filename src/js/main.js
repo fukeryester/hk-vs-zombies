@@ -21,6 +21,34 @@
     stopLoop: null,
     matchMeta: { mode:"1v1", started_at: null, config: null },
     gameId: null,
+    codexCiv: "hk_finance",
+  };
+
+  const CODEX_GUIDE = {
+    hk_finance: {
+      tags: ["经济流", "后期爆发", "前期偏弱"],
+      tips: ["前期先补经济和人口，靠基地回血与保镖过渡。", "T2 后远程火力仍强，但已不再适合无脑站桩对射。", "大招偏滚雪球，适合优势时拉开资源差。"],
+    },
+    hk_slum: {
+      tags: ["暴兵流", "人海压制", "节奏快"],
+      tips: ["依靠便宜单位快速铺场。", "怕范围伤害和厚前排，最好不断补线压节奏。", "街坊起义现在更偏近战杂兵，不再靠白嫖枪线赢团。"],
+    },
+    hk_police: {
+      tags: ["均衡", "装甲流", "中期强"],
+      tips: ["前排防暴仍是核心，但后排枪线已明显削弱。", "狙击和飞虎队更适合补关键火力，不再能单卡清屏。", "适合稳扎稳打，别再把它当纯远程碾压文明。"],
+    },
+    zom_classic: {
+      tags: ["均衡尸潮", "前期更稳", "经典推进"],
+      tips: ["普通僵尸和跳蚤已更耐打，前期更容易顶住火力。", "基地更厚，更适合边守边攒 T2/T3。", "巨怪和投石僵尸仍是中后期破阵主力。"],
+    },
+    zom_ghost: {
+      tags: ["高机动", "切后排", "骚扰强"],
+      tips: ["跳僵尸和饿鬼前期都更顺手，适合抢节奏。", "用高机动逼人类远程交火位，而不是正面硬吃。", "虽然基地也变厚了，但依旧别和重装正面对磨太久。"],
+    },
+    zom_bio: {
+      tags: ["慢热", "AOE", "后期团战"],
+      tips: ["感染者和酸液喷射者加强后，前期不再那么坐牢。", "基地更厚，更容易拖到毒气和母体成型。", "成型后依旧靠范围伤害和团战续航滚雪球。"],
+    },
   };
 
   // ------------- 屏幕切换 -------------
@@ -117,6 +145,8 @@
         else if (a === "quick-2v2") startSinglePlayer("2v2");
         else if (a === "host") hostRoom();
         else if (a === "join") openJoinScreen();
+        else if (a === "codex") { showScreen("codex"); renderCodex(App.codexCiv); }
+        else if (a === "codex-back") showScreen("menu");
         else if (a === "help") showScreen("help");
         else if (a === "help-close") showScreen("menu");
         else if (a === "lobby-back") leaveLobby();
@@ -275,6 +305,167 @@
   // 大厅视图辅助：本地/联机通用
   function amHost() { return App.isLocal ? true : Net.iAmHost(); }
   function myCid()  { return App.isLocal ? "local-me" : Net.myClientId(); }
+
+  function assetPath(key) {
+    return key ? `img/${key}.png?v=3` : "";
+  }
+  function prereqName(civ, req) {
+    return req ? (civ.buildings[req]?.name || req) : "开局可用";
+  }
+  function unitRoleText(u) {
+    if (u.support) return "辅助";
+    if (u.lobber) return "攻城";
+    if ((u.range || 0) <= 40) return "近战";
+    if (u.splash) return "范围远程";
+    return "远程";
+  }
+  function buildingSummary(civ, kind, def) {
+    if (kind === B.HQ) return "基地核心，被打爆就输。";
+    if (kind === B.INCOME) return `经济建筑，收入 +${def.effect?.income || 0}/s。`;
+    if (kind === B.POP) return `人口建筑，人口上限 +${def.effect?.pop || 0}。`;
+    if (kind === B.TECH_A) return "一级科技，解锁 T2 兵种。";
+    if (kind === B.TECH_B) return "二级科技，解锁 T3 兵种与关键战力。";
+    if (kind === B.TECH_C) return "三级科技，解锁 T4 / 终盘单位与终极战术。";
+    return "";
+  }
+  function skillIcon(s) {
+    if (!s) return "✨";
+    if (s.kind === "summon") return "👥";
+    if (s.kind === "harvester") return "🚐";
+    if (s.kind === "airstrike") return "🚁";
+    if (s.kind === "buff_econ") return "💹";
+    if (s.kind === "barrage") return "🪨";
+    if (s.kind === "buff_army") return "🌕";
+    if (s.kind === "poison") return "☣️";
+    return "✨";
+  }
+  function summonTextForCiv(civId, skill) {
+    const civ = CIVS[civId];
+    const parts = (skill.byCiv && skill.byCiv[civId]) || skill.units || [];
+    return parts.map(([token, n]) => {
+      const u = civ.units[token];
+      if (u) return `${n} ${u.name}`;
+      return `${n} ${token}`;
+    }).join(" + ");
+  }
+
+  function renderCodex(civId) {
+    const all = [...HK_CIVS, ...ZOM_CIVS];
+    const chosen = CIVS[civId] ? civId : (App.codexCiv || all[0]);
+    const civ = CIVS[chosen];
+    if (!civ) return;
+    App.codexCiv = chosen;
+
+    const tabs = document.getElementById("codex-tabs");
+    const hero = document.getElementById("codex-hero");
+    const unitsBox = document.getElementById("codex-units");
+    const buildingsBox = document.getElementById("codex-buildings");
+    const skillsBox = document.getElementById("codex-skills");
+    if (!tabs || !hero || !unitsBox || !buildingsBox || !skillsBox) return;
+
+    tabs.innerHTML = all.map(id => {
+      const c = CIVS[id];
+      return `<button class="codex-tab ${id === chosen ? "active" : ""}" data-civ="${id}" style="color:${c.color}">${HUD.escapeHtml(c.name)}</button>`;
+    }).join("");
+    tabs.querySelectorAll(".codex-tab").forEach(el => {
+      el.onclick = () => renderCodex(el.dataset.civ);
+    });
+
+    const guide = CODEX_GUIDE[chosen] || { tags: [], tips: [] };
+    const baseHp = civ.buildings[B.HQ]?.hp || 0;
+    const bgKey = Render?.bgImageKeyForCiv ? Render.bgImageKeyForCiv(chosen) : null;
+    const baseKey = Render?.baseImageKeyForCiv ? Render.baseImageKeyForCiv(chosen) : null;
+    hero.innerHTML = `
+      <div class="codex-cover" style="background-image:url('${assetPath(bgKey)}')">
+        <div class="codex-cover-label">${civ.side === "hk" ? "🏙️ 香港阵营" : "🧟 僵尸阵营"}</div>
+        <img class="codex-base" src="${assetPath(baseKey)}" alt="${HUD.escapeHtml(civ.name)}">
+      </div>
+      <div class="codex-summary">
+        <div>
+          <div class="codex-sub">${civ.side === "hk" ? "香港文明" : "僵尸文明"}</div>
+          <h3 style="color:${civ.color}">${HUD.escapeHtml(civ.name)}</h3>
+          <div class="codex-desc">${HUD.escapeHtml(civ.desc)}</div>
+        </div>
+        <div class="codex-tags">${guide.tags.map(t => `<span class="codex-tag">${HUD.escapeHtml(t)}</span>`).join("")}</div>
+        <div class="codex-metrics">
+          <div class="codex-metric"><div class="k">基地血量</div><div class="v">${baseHp}</div></div>
+          <div class="codex-metric"><div class="k">基地回血</div><div class="v">${civ.baseRegen || 0}/s</div></div>
+          <div class="codex-metric"><div class="k">初始收入</div><div class="v">${civ.baseIncome}/s</div></div>
+          <div class="codex-metric"><div class="k">基础人口</div><div class="v">${civ.baseCap}</div></div>
+        </div>
+        <ul class="codex-tips">${guide.tips.map(t => `<li>${HUD.escapeHtml(t)}</li>`).join("")}</ul>
+      </div>
+    `;
+
+    unitsBox.innerHTML = Object.entries(civ.units)
+      .sort((a, b) => a[1].cost - b[1].cost)
+      .map(([uid, u]) => {
+        const key = Render?.imageKeyForUnitCard ? Render.imageKeyForUnitCard(civ.side, u.arch) : null;
+        const splash = u.splash ? ` · 溅射 ${u.splash}` : "";
+        const jump = u.jump ? ` · 跳跃 ${u.jump}` : "";
+        return `
+          <article class="codex-card">
+            <img src="${assetPath(key)}" alt="${HUD.escapeHtml(u.name)}">
+            <div>
+              <h4>${HUD.escapeHtml(u.name)}</h4>
+              <div class="codex-sub">${HUD.escapeHtml(unitRoleText(u))} · ${HUD.escapeHtml(prereqName(civ, u.prereq))}</div>
+            </div>
+            <div class="codex-stats">
+              <span>花费 $${u.cost}</span>
+              <span>人口 ${u.pop}</span>
+              <span>生命 ${u.hp}</span>
+              <span>伤害 ${u.dmg}</span>
+              <span>射程 ${u.range}</span>
+              <span>移速 ${u.speed}</span>
+              <span>攻速 ${u.atkCd}s</span>
+              <span>训练 ${u.buildTime}s</span>
+            </div>
+            <div class="codex-desc">原型 ${HUD.escapeHtml(u.arch)}${HUD.escapeHtml(splash)}${HUD.escapeHtml(jump)}</div>
+          </article>
+        `;
+      }).join("");
+
+    const buildOrder = [B.HQ, B.INCOME, B.POP, B.TECH_A, B.TECH_B, B.TECH_C];
+    buildingsBox.innerHTML = buildOrder.map(kind => {
+      const def = civ.buildings[kind];
+      const key = kind === B.HQ
+        ? (Render?.baseImageKeyForCiv ? Render.baseImageKeyForCiv(chosen) : null)
+        : (Render?.buildingImageKey ? Render.buildingImageKey(civ.side, kind) : null);
+      return `
+        <article class="codex-card">
+          <img src="${assetPath(key)}" alt="${HUD.escapeHtml(def.name)}">
+          <div>
+            <h4>${HUD.escapeHtml(def.name)}</h4>
+            <div class="codex-sub">${HUD.escapeHtml(kind)}</div>
+          </div>
+          <div class="codex-stats">
+            <span>花费 $${def.cost}</span>
+            <span>上限 ${def.cap}</span>
+            ${kind === B.HQ ? `<span>生命 ${def.hp}</span>` : ""}
+            ${kind === B.INCOME ? `<span>收入 +${def.effect?.income || 0}/s</span>` : ""}
+            ${kind === B.POP ? `<span>人口 +${def.effect?.pop || 0}</span>` : ""}
+            ${(kind === B.TECH_A || kind === B.TECH_B || kind === B.TECH_C) ? `<span>科技建筑</span>` : ""}
+          </div>
+          <div class="codex-desc">${HUD.escapeHtml(buildingSummary(civ, kind, def))}</div>
+        </article>
+      `;
+    }).join("");
+
+    skillsBox.innerHTML = civ.skills.map(sid => {
+      const s = SKILLS[sid];
+      const extra = s.kind === "summon" ? `召唤：${summonTextForCiv(chosen, s)}。` : "";
+      return `
+        <article class="codex-card">
+          <div class="codex-skill-icon">${skillIcon(s)}</div>
+          <div>
+            <h4>${HUD.escapeHtml(s.name)}</h4>
+            <div class="codex-sub">消耗 ${s.cost} 能量 · ${HUD.escapeHtml(s.kind)}</div>
+          </div>
+          <div class="codex-desc">${HUD.escapeHtml(s.desc)} ${HUD.escapeHtml(extra)}</div>
+        </article>
+      `;
+    }).join("");
+  }
 
   // 渲染大厅 UI
   function renderLobby() {
