@@ -57,38 +57,44 @@
     {"id":"board_biggest_army",      "name":"暴兵大师榜",   "sort":"desc", "keep":"best", "display":"number"}
   ],
   "displays": [
-    {"id":"disp_matches", "type":"number", "title":"我的总对局", "format":"integer",
-      "source": {"type":"stat_player", "stat_id":"matches_total"}},
-    {"id":"disp_wins", "type":"number", "title":"我的胜场", "format":"integer",
-      "source": {"type":"stat_player", "stat_id":"wins_total"}},
-    {"id":"disp_kills", "type":"number", "title":"我的击杀", "format":"integer",
-      "source": {"type":"stat_player", "stat_id":"kills_total"}},
-    {"id":"disp_gold",   "type":"number", "title":"我的累计金钱", "format":"integer",
-      "source": {"type":"stat_player", "stat_id":"gold_earned_total"}},
+    {"id":"disp_global_matches", "type":"number", "title":"全服总对局", "format":"integer",
+      "source":{"type":"stat_global","stat_id":"matches_total","agg":"sum"}},
+    {"id":"disp_global_wins",    "type":"number", "title":"全服总胜利", "format":"integer",
+      "source":{"type":"stat_global","stat_id":"wins_total","agg":"sum"}},
+    {"id":"disp_global_kills",   "type":"number", "title":"全服累计击杀", "format":"integer",
+      "source":{"type":"stat_global","stat_id":"kills_total","agg":"sum"}},
+    {"id":"disp_global_units",   "type":"number", "title":"全服累计造兵", "format":"integer",
+      "source":{"type":"stat_global","stat_id":"units_built_total","agg":"sum"}},
+
+    {"id":"disp_avg_kills", "type":"number", "title":"全服人均击杀", "format":"decimal",
+      "source":{"type":"binary","op":"div",
+        "left":{"type":"stat_global","stat_id":"kills_total","agg":"sum"},
+        "right":{"type":"stat_global","stat_id":"matches_total","agg":"sum"}}},
+
+    {"id":"disp_side_pie", "type":"pie", "title":"全服阵营偏好",
+      "series":[
+        {"label":"🏙️ 香港", "color":"#1e5599", "source":{"type":"stat_global","stat_id":"matches_as_hk","agg":"sum"}},
+        {"label":"🧟 僵尸", "color":"#5a1a1a", "source":{"type":"stat_global","stat_id":"matches_as_zom","agg":"sum"}}
+      ]},
+
+    {"id":"disp_civ_bar", "type":"bar", "title":"全服文明使用",
+      "series":[
+        {"label":"中环金融", "color":"#1e5599", "source":{"type":"stat_global","stat_id":"civ_used_hk_finance","agg":"sum"}},
+        {"label":"深水埗",   "color":"#7d4c1c", "source":{"type":"stat_global","stat_id":"civ_used_hk_slum","agg":"sum"}},
+        {"label":"湾仔差馆", "color":"#2e6e4a", "source":{"type":"stat_global","stat_id":"civ_used_hk_police","agg":"sum"}},
+        {"label":"末日尸潮", "color":"#5a1a1a", "source":{"type":"stat_global","stat_id":"civ_used_zom_classic","agg":"sum"}},
+        {"label":"港式怪谈", "color":"#4a1a4a", "source":{"type":"stat_global","stat_id":"civ_used_zom_ghost","agg":"sum"}},
+        {"label":"病毒实验", "color":"#204a2a", "source":{"type":"stat_global","stat_id":"civ_used_zom_bio","agg":"sum"}}
+      ]},
 
     {"id":"disp_lb_composite", "type":"leaderboard", "title":"综合战力榜 Top 10",
       "board_id":"board_composite", "limit": 10},
-    {"id":"disp_lb_speed", "type":"leaderboard", "title":"最速通关榜 Top 10",
+    {"id":"disp_lb_kpm",       "type":"leaderboard", "title":"单局击杀榜 Top 10",
+      "board_id":"board_kills_per_match", "limit": 10},
+    {"id":"disp_lb_speed",     "type":"leaderboard", "title":"最速通关榜 Top 10",
       "board_id":"board_shortest_win_sec", "limit": 10},
-
-    {"id":"disp_side_pie", "type":"pie", "title":"我的阵营偏好",
-      "series":[
-        {"label":"🏙️ 香港", "color":"#1e5599", "source":{"type":"stat_player","stat_id":"matches_as_hk"}},
-        {"label":"🧟 僵尸", "color":"#5a1a1a", "source":{"type":"stat_player","stat_id":"matches_as_zom"}}
-      ]},
-
-    {"id":"disp_civ_bar", "type":"bar", "title":"我的文明使用",
-      "series":[
-        {"label":"中环金融", "color":"#1e5599", "source":{"type":"stat_player","stat_id":"civ_used_hk_finance"}},
-        {"label":"深水埗",   "color":"#7d4c1c", "source":{"type":"stat_player","stat_id":"civ_used_hk_slum"}},
-        {"label":"湾仔差馆", "color":"#2e6e4a", "source":{"type":"stat_player","stat_id":"civ_used_hk_police"}},
-        {"label":"末日尸潮", "color":"#5a1a1a", "source":{"type":"stat_player","stat_id":"civ_used_zom_classic"}},
-        {"label":"港式怪谈", "color":"#4a1a4a", "source":{"type":"stat_player","stat_id":"civ_used_zom_ghost"}},
-        {"label":"病毒实验", "color":"#204a2a", "source":{"type":"stat_player","stat_id":"civ_used_zom_bio"}}
-      ]},
-
-    {"id":"disp_global_kills", "type":"number", "title":"全服累计击杀", "format":"integer",
-      "source":{"type":"stat_global","stat_id":"kills_total","agg":"sum"}},
+    {"id":"disp_lb_army",      "type":"leaderboard", "title":"暴兵大师榜 Top 10",
+      "board_id":"board_biggest_army", "limit": 10},
 
     {"id":"disp_achievements", "type":"achievement_rates", "title":"全球成就完成率"}
   ]
