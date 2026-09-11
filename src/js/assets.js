@@ -40,7 +40,7 @@ function loadAssets(onProgress) {
       if (onProgress) onProgress(loaded, total, name);
       resolve();
     };
-    img.src = "img/" + name + ".png?v=1";
+    img.src = "img/" + name + ".png?v=2";
   })));
 }
 
