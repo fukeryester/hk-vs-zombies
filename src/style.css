@@ -251,8 +251,11 @@ button{ font-family:inherit; }
 =========================================================== */
 #play-screen{
   padding: 0;
+}
+/* 仅激活态才占满视口 + 关闭滚动；否则 .screen{display:none} 生效
+   （之前无 .active 前缀导致此屏永远显示，拦截了菜单点击） */
+#play-screen.active{
   height: 100vh;
-  display: flex; flex-direction: column;
   overflow: hidden;
 }
 .hud-top{
