@@ -39,9 +39,7 @@ function createInitialState(config) {
     over: false,
     winner: null,             // "hk" | "zom"
     over_time: 0,             // 结束时的 time
-    hp: { hk: 1000, zom: 1000 }, // 基地共享血
-    hpMax: { hk: 1000, zom: 1000 },
-    players: [],              // 见下
+    players: [],              // 见下（含 baseHp / baseHpMax / baseX）
     units: [],                // 战场单位
     effects: [],              // 视觉效果 & 大招驻留
     projectiles: [],          // 投石/子弹（简化）
@@ -51,25 +49,27 @@ function createInitialState(config) {
     corpses: [],              // 尸体（渲染用，仿真里只保留 2s）
   };
 
-  // 计算基地血：2v2 双方各 +50%
-  const hkCount = config.players.filter(p => p.team === "hk").length;
-  const zomCount = config.players.filter(p => p.team === "zom").length;
-  state.hpMax.hk = 800 + 400 * hkCount;
-  state.hpMax.zom = 800 + 400 * zomCount;
-  state.hp.hk = state.hpMax.hk;
-  state.hp.zom = state.hpMax.zom;
-
-  // 初始化玩家
+  // 初始化玩家（每人一座基地）
   config.players.forEach((p, i) => {
     const civ = CIVS[p.civId];
     if (!civ) { console.warn("unknown civ", p.civId); return; }
+    const row = p.row || 0;
+    const isHK = p.team === "hk";
+    // 每玩家一座基地：row=0 靠中路（前排），row=1 更靠边（后排，视觉更小）
+    const baseX = isHK
+      ? (HQ_HK_X + (row === 0 ? 25 : -25))
+      : (HQ_ZOM_X + (row === 0 ? -25 : 25));
+    const hqDef = civ.buildings[B.HQ] || { hp: 1000 };
+    const baseHp = hqDef.hp || 1000;
     state.players.push({
       seat: i,                  // 全局座位 (0..N-1)
       team: p.team,
       isAI: !!p.isAI,
       civId: p.civId,
       name: p.name || (p.isAI ? "AI" : "Player " + (i+1)),
-      row: p.row || 0,          // 0=前, 1=后
+      row,                      // 0=前, 1=后
+      baseX,
+      baseHp, baseHpMax: baseHp,
       gold: 300,
       income: civ.baseIncome,
       pop: 0,
@@ -81,11 +81,36 @@ function createInitialState(config) {
       last_ai_think: 0,         // AI 思考节拍
       kills: 0, killsGold: 0, unitsBuilt: 0, buildingsBuilt: 0,
       spent: 0, earned: 300,
-      alive: true,              // 玩家自己没独立血条，此字段保留（未来用）
+      alive: true,
     });
   });
 
   return state;
+}
+
+// ---- 多基地辅助 ----
+function teamAlive(state, team) {
+  return state.players.some(p => p.team === team && p.baseHp > 0);
+}
+function nearestBase(state, team, x) {
+  let best = null, bd = Infinity;
+  for (const p of state.players) {
+    if (p.team !== team) continue;
+    if (p.baseHp <= 0) continue;
+    const d = Math.abs(p.baseX - x);
+    if (d < bd) { bd = d; best = p; }
+  }
+  return best;
+}
+// 队伍总血/总血上限（HUD/兼容用）
+function teamHpSum(state, team) {
+  let hp = 0, hpMax = 0;
+  for (const p of state.players) {
+    if (p.team !== team) continue;
+    hp += Math.max(0, p.baseHp);
+    hpMax += p.baseHpMax;
+  }
+  return { hp, hpMax: hpMax || 1 };
 }
 
 // ===============================================================
@@ -296,6 +321,7 @@ function spawnUnit(state, p, unitId, opt) {
     free: !!opt.free,  // 不占人口
     born: state.time,
     lastAtkTarget: 0,
+    atkFxTime: 0,      // 上次攻击时的 state.time（渲染层做挥砍/枪口闪光）
   };
   state.units.push(u);
   p.unitsBuilt++;
@@ -338,11 +364,18 @@ function tickSim(state, dt) {
             u.hp -= e.dmg * dt;
           }
         }
-        // 撞到对方基地
+        // 撞到对方基地：伤最近那座
         const finishAtHK = e.dir < 0 && e.x <= HQ_HK_X + 30;
         const finishAtZom = e.dir > 0 && e.x >= HQ_ZOM_X - 30;
-        if (finishAtHK) { state.hp.hk -= 250; break; }
-        if (finishAtZom) { state.hp.zom -= 250; break; }
+        if (finishAtHK || finishAtZom) {
+          const target = nearestBase(state, enemy, e.x);
+          if (target) target.baseHp -= 250;
+          state.effects.push({
+            id: state.nextEffectId++, kind: "fire_burst",
+            x: e.x, y: 0, r: 60, life: 0.7, initLife: 0.7,
+          });
+          break;
+        }
         remainEffects.push(e);
         break;
       }
@@ -405,14 +438,35 @@ function tickSim(state, dt) {
         }
         const p = state.players[pr.seat];
         if (p) spawnUnit(state, p, pr.unitId, { x: pr.x_to, y: pr.y_to });
+        state.effects.push({
+          id: state.nextEffectId++, kind: "fire_burst",
+          x: pr.x_to, y: pr.y_to, r: 40, life: 0.5, initLife: 0.5,
+        });
       } else if (pr.kind === "lob") {
-        // 投石机弹丸：溅射一小圈
+        // 投石机弹丸：溅射一小圈 + 爆炸视效
         const enemy = pr.team === "hk" ? "zom" : "hk";
         for (const u of state.units) {
           if (u.team === enemy && Math.abs(u.x - pr.x_to) < 24) {
             u.hp -= pr.dmg;
           }
         }
+        state.effects.push({
+          id: state.nextEffectId++, kind: "fire_burst",
+          x: pr.x_to, y: pr.y_to, r: 30, life: 0.55, initLife: 0.55,
+        });
+      } else if (pr.kind === "molotov") {
+        // 燃烧瓶：纯视觉（伤害在发射瞬间已结算），落地烧一片
+        state.effects.push({
+          id: state.nextEffectId++, kind: "fire_burst",
+          x: pr.x_to, y: pr.y_to, r: pr.splash || 30,
+          life: 0.6, initLife: 0.6,
+        });
+      } else if (pr.kind === "bullet") {
+        // 子弹：小火花
+        state.effects.push({
+          id: state.nextEffectId++, kind: "spark",
+          x: pr.x_to, y: pr.y_to, life: 0.14, initLife: 0.14,
+        });
       }
     } else {
       remainProj.push(pr);
@@ -434,7 +488,7 @@ function tickSim(state, dt) {
       u.charmedBy = null;
     }
 
-    // 找目标
+    // 找目标（单位）
     const enemyTeam = u.team === "hk" ? "zom" : "hk";
     let target = null;
     let bestDist = Infinity;
@@ -442,12 +496,11 @@ function tickSim(state, dt) {
       if (t.hp <= 0) continue;
       if (t.team === u.team) continue;
       const dx = Math.abs(t.x - u.x);
-      // 只关心大致同排（跨排也允许，但 100% 距离衰减）
       if (dx < bestDist) { bestDist = dx; target = t; }
     }
-    // 也可能目标是敌方基地
-    const enemyBaseX = u.team === "hk" ? HQ_ZOM_X : HQ_HK_X;
-    const distToBase = Math.abs(enemyBaseX - u.x);
+    // 也可能目标是敌方基地：找最近的活基地
+    const nearBase = nearestBase(state, enemyTeam, u.x);
+    const distToBase = nearBase ? Math.abs(nearBase.baseX - u.x) : Infinity;
     let targetBase = false;
     if (!target || distToBase < bestDist - 20) {
       targetBase = true;
@@ -529,29 +582,70 @@ function tickSim(state, dt) {
         let atkMul = 1;
         for (const b of buffs) atkMul *= b.atkMul;
 
+        // 目标位置（用于视觉投射物）
+        const tx = targetBase ? nearBase.baseX : atkTarget.x;
+        const ty = targetBase ? -40 : (atkTarget.y - 10);
+        // 打击标记（渲染层用来做挥砍/枪口闪光/后坐）
+        u.atkFxTime = state.time;
+
+        const isLobber = u.def.lobber || u.def.tag === "lobber" || u.def.arch === "zom_cata";
+        const isAoe = u.def.arch === "ranged_aoe" || (u.def.splash && !isLobber);
+        const isRanged = (u.def.range || 24) > 40;
+
         if (targetBase) {
-          state.hp[enemyTeam] -= u.def.dmg * atkMul;
-        } else if (u.def.lobber || u.def.tag === "lobber") {
-          // 投石机：远程投射弹
+          nearBase.baseHp -= u.def.dmg * atkMul;
+          // 基地也来个弹道视觉
+          if (isLobber) {
+            state.projectiles.push({
+              id: state.nextProjectileId++, kind: "lob", team: u.team,
+              x_from: u.x, y_from: u.y - 30, x_to: tx, y_to: ty,
+              dmg: 0, t: 0, dur: 0.7, seat: u.seat,
+            });
+          } else if (isAoe) {
+            state.projectiles.push({
+              id: state.nextProjectileId++, kind: "molotov", team: u.team,
+              x_from: u.x + u.dir * 8, y_from: u.y - 30, x_to: tx, y_to: ty,
+              splash: u.def.splash || 30, t: 0, dur: 0.5, seat: u.seat,
+            });
+          } else if (isRanged) {
+            state.projectiles.push({
+              id: state.nextProjectileId++, kind: "bullet", team: u.team,
+              x_from: u.x + u.dir * 10, y_from: u.y - 35, x_to: tx, y_to: ty,
+              t: 0, dur: 0.08, seat: u.seat,
+            });
+          }
+          // 近战打基地不加投射物，靠 atkFxTime 做挥砍
+        } else if (isLobber) {
           state.projectiles.push({
             id: state.nextProjectileId++,
-            kind: "lob",
-            team: u.team,
-            x_from: u.x, y_from: u.y - 20,
-            x_to: atkTarget.x, y_to: atkTarget.y,
+            kind: "lob", team: u.team,
+            x_from: u.x, y_from: u.y - 20, x_to: atkTarget.x, y_to: atkTarget.y,
             dmg: u.def.dmg * atkMul,
-            t: 0, dur: 0.7,
-            seat: u.seat,
+            t: 0, dur: 0.7, seat: u.seat,
           });
-        } else if (u.def.arch === "ranged_aoe" || u.def.splash) {
-          // 燃烧瓶 / 溅射：直接对范围内敌人造成伤害
+        } else if (isAoe) {
+          // 燃烧瓶：伤害立即结算 + 视觉弹丸 + 落地火团
           const r = u.def.splash || 30;
           for (const t of state.units) {
             if (t.team !== u.team && Math.abs(t.x - atkTarget.x) < r) {
               t.hp -= u.def.dmg * atkMul;
             }
           }
+          state.projectiles.push({
+            id: state.nextProjectileId++, kind: "molotov", team: u.team,
+            x_from: u.x + u.dir * 8, y_from: u.y - 30, x_to: atkTarget.x, y_to: atkTarget.y - 5,
+            splash: r, t: 0, dur: 0.5, seat: u.seat,
+          });
+        } else if (isRanged) {
+          atkTarget.hp -= u.def.dmg * atkMul;
+          state.projectiles.push({
+            id: state.nextProjectileId++, kind: "bullet", team: u.team,
+            x_from: u.x + u.dir * 10, y_from: u.y - 35,
+            x_to: atkTarget.x, y_to: atkTarget.y - 20,
+            t: 0, dur: 0.08, seat: u.seat,
+          });
         } else {
+          // 纯近战
           atkTarget.hp -= u.def.dmg * atkMul;
         }
         u.cdAtk = u.def.atkCd;
@@ -607,12 +701,12 @@ function tickSim(state, dt) {
   state.units = alive;
   state.corpses = state.corpses.filter(c => c.until > state.time);
 
-  // ---- 胜负判定 ----
-  if (state.hp.hk <= 0) {
-    state.hp.hk = 0;
+  // ---- 胜负判定：某方所有基地都爆才判负 ----
+  // 顺便把负数血夹紧
+  state.players.forEach(pp => { if (pp.baseHp < 0) pp.baseHp = 0; });
+  if (!teamAlive(state, "hk")) {
     state.over = true; state.winner = "zom"; state.over_time = state.time;
-  } else if (state.hp.zom <= 0) {
-    state.hp.zom = 0;
+  } else if (!teamAlive(state, "zom")) {
     state.over = true; state.winner = "hk"; state.over_time = state.time;
   }
 }
@@ -627,12 +721,19 @@ function emitEvent(state, type, data) {
 // 全量快照 = state 本身 JSON 化。为节约带宽可以自定义，MVP 阶段直接 JSON。
 function snapshot(state) {
   // 剥掉一些不必要的引用，保留纯数据
+  const hkSum = teamHpSum(state, "hk");
+  const zomSum = teamHpSum(state, "zom");
   const clean = {
     tick: state.tick, time: state.time, seed: state.seed,
     over: state.over, winner: state.winner, over_time: state.over_time,
-    hp: state.hp, hpMax: state.hpMax,
+    // 兼容旧 HUD/render：队伍总血
+    hp: { hk: hkSum.hp, zom: zomSum.hp },
+    hpMax: { hk: hkSum.hpMax, zom: zomSum.hpMax },
     players: state.players.map(p => ({
       seat: p.seat, team: p.team, isAI: p.isAI, civId: p.civId, name: p.name, row: p.row,
+      baseX: p.baseX,
+      baseHp: Math.max(0, Math.round(p.baseHp)),
+      baseHpMax: p.baseHpMax,
       gold: Math.round(p.gold), income: p.income,
       pop: p.pop, popCap: p.popCap, energy: Math.round(p.energy),
       built: { ...p.built }, kills: p.kills, unitsBuilt: p.unitsBuilt, buildingsBuilt: p.buildingsBuilt,
@@ -644,6 +745,7 @@ function snapshot(state) {
       hp: Math.round(u.hp), hpMax: u.hpMax,
       jumpUntil: u.jumpUntil, jumpFromX: u.jumpFromX, jumpToX: u.jumpToX,
       jumpStart: u.jumpStart, jumpDur: u.jumpDur, charmedBy: u.charmedBy ? 1 : 0,
+      atkFxTime: u.atkFxTime || 0,
     })),
     effects: state.effects.map(e => ({ ...e })),
     projectiles: state.projectiles.map(pr => ({ ...pr })),

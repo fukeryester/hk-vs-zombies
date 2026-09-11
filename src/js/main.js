@@ -616,9 +616,13 @@
     document.getElementById("btn-quit").addEventListener("click", () => {
       if (confirm("确定离场？（会算作败北）")) {
         if (App.state) {
-          // 让自己队伍算失败：把自己方基地 HP 打成 0
+          // 让自己队伍算失败：把自己方所有玩家的基地 HP 都打成 0
           const me = App.state.players[App.meSeat];
-          if (me) App.state.hp[me.team] = 0;
+          if (me) {
+            App.state.players.forEach(p => {
+              if (p.team === me.team) p.baseHp = 0;
+            });
+          }
         } else {
           showScreen("menu");
         }

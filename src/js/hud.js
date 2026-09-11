@@ -3,17 +3,45 @@
 const HUD = (function () {
 
   function renderTop(state) {
-    const hkP = state.hp.hk / state.hpMax.hk;
-    const zomP = state.hp.zom / state.hpMax.zom;
-    const $hkFill = document.querySelector(".hp-hk .hp-fg");
-    const $zomFill = document.querySelector(".hp-zom .hp-fg");
-    const $hkVal = document.querySelector(".hp-hk .hp-value");
-    const $zomVal = document.querySelector(".hp-zom .hp-value");
-    if ($hkFill) $hkFill.style.width = Math.max(0, hkP * 100) + "%";
-    if ($zomFill) $zomFill.style.width = Math.max(0, zomP * 100) + "%";
-    if ($hkVal) $hkVal.textContent = `${Math.max(0,Math.round(state.hp.hk))} / ${state.hpMax.hk}`;
-    if ($zomVal) $zomVal.textContent = `${Math.max(0,Math.round(state.hp.zom))} / ${state.hpMax.zom}`;
+    // 顶部两个容器（.hp-hk / .hp-zom）里各放该阵营 N 名玩家的迷你血条
+    renderTeamBars(document.querySelector(".hp-hk"), "hk", state);
+    renderTeamBars(document.querySelector(".hp-zom"), "zom", state);
     document.getElementById("tick-badge").textContent = `t=${Math.floor(state.time)}s`;
+  }
+
+  function renderTeamBars(box, team, state) {
+    if (!box) return;
+    const players = state.players.filter(p => p.team === team);
+    const label = team === "hk" ? "🏙️ 香港" : "🧟 僵尸";
+    // DOM 结构缓存：只在玩家数量变化时重建
+    const key = team + ":" + players.map(p => p.seat).join(",");
+    if (box._key !== key) {
+      box._key = key;
+      const rows = players.map(p => {
+        const civ = CIVS[p.civId] || {};
+        const nm = escapeHtml(p.name || "P" + p.seat);
+        const civName = escapeHtml((civ.name || "").slice(0, 4));
+        return `<div class="hp-row" data-seat="${p.seat}">
+          <span class="hp-who">${nm}<span class="hp-civ"> · ${civName}</span></span>
+          <div class="hp-fill"><div class="hp-fg" style="background:${civ.color || "#666"}"></div></div>
+          <span class="hp-value">0/0</span>
+        </div>`;
+      }).join("");
+      box.innerHTML =
+        `<span class="hp-label">${label}</span>
+         <div class="hp-multi">${rows || `<div class='hp-row empty'>—</div>`}</div>`;
+    }
+    // 数值刷新
+    players.forEach(p => {
+      const row = box.querySelector(`.hp-row[data-seat="${p.seat}"]`);
+      if (!row) return;
+      const rat = p.baseHpMax > 0 ? Math.max(0, p.baseHp / p.baseHpMax) : 0;
+      const fg = row.querySelector(".hp-fg");
+      if (fg) fg.style.width = (rat * 100) + "%";
+      const val = row.querySelector(".hp-value");
+      if (val) val.textContent = `${Math.max(0, Math.round(p.baseHp))}/${p.baseHpMax}`;
+      row.classList.toggle("dead", rat <= 0);
+    });
   }
 
   function renderPlayerStrip(state, meSeat, dispatch) {

@@ -1,7 +1,7 @@
-/* render.js — Canvas 2D 贴图渲染（v3 · 文生图版）
+/* render.js — Canvas 2D 贴图渲染（v3.3 · 多基地 + 建筑剪影 + 攻击视觉）
    -----------------------------------------------------------------
-   风格：半写实末日水彩概念画。所有角色/建筑/环境都是 PNG 贴图，
-   Canvas 只负责合成 + HP 条 + 动画效果（跳跃/走路抖）+ 大招粒子。
+   分层（从后到前）：
+     背景大图 → 玩家建筑剪影 → 尸体 → 基地 → 单位 → 投射物 → 效果
    -----------------------------------------------------------------
 */
 
@@ -47,7 +47,7 @@ const ZOM_FALLBACK = {
   support:      "zom_lady",
   melee_tank:   "zom_giant",
   melee_cheap:  "zom_normal",
-  melee_fast:   "zom_hopper",
+  melee_fast:   "zom_hop",
 };
 const ARCH_HEIGHT = {
   melee_cheap:  58,
@@ -84,13 +84,13 @@ const CIV_BASE = {
 };
 
 // ==================================================================
-// 背景 · 分屏双 backdrop + 顶部渐变
+// 背景 · 单张随机整图（不再左右拼接，也不再撒环境道具）
 // ==================================================================
-function drawBackground(ctx, snap, tShow) {
-  const hkP = snap.players.find(p => p.team === "hk");
-  const zomP = snap.players.find(p => p.team === "zom");
-  const bgHK = IMG[CIV_BG[hkP?.civId || "hk_finance"]];
-  const bgZom = IMG[CIV_BG[zomP?.civId || "zom_classic"]];
+const BG_KEYS = ["bg_finance","bg_slum","bg_police","bg_zomclassic","bg_zomghost","bg_zombio"];
+function drawBackground(ctx, snap) {
+  const seed = snap.seed || 0;
+  const idx = ((seed % BG_KEYS.length) + BG_KEYS.length) % BG_KEYS.length;
+  const bg = IMG[BG_KEYS[idx]];
 
   // 底色兜底
   const grad = ctx.createLinearGradient(0, 0, 0, R.CANVAS_H);
@@ -100,27 +100,22 @@ function drawBackground(ctx, snap, tShow) {
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, R.CANVAS_W, R.CANVAS_H);
 
-  // 香港背景（左半，稍微越过中线）
-  if (bgHK) {
-    const bw = R.CANVAS_W * 0.60;
-    const bh = R.CANVAS_H;   // 铺满高度；底部会被地面覆盖
-    ctx.drawImage(bgHK, 0, 0, bw, bh);
-  }
-  // 僵尸背景（右半）
-  if (bgZom) {
-    const bw = R.CANVAS_W * 0.60;
-    ctx.drawImage(bgZom, R.CANVAS_W - bw, 0, bw, R.CANVAS_H);
+  if (bg) {
+    // cover-fit：铺满 canvas，多出裁掉
+    const cRatio = R.CANVAS_W / R.CANVAS_H;
+    const iRatio = bg.width / bg.height;
+    let dw, dh, dx, dy;
+    if (iRatio > cRatio) {
+      dh = R.CANVAS_H; dw = dh * iRatio;
+      dx = (R.CANVAS_W - dw) / 2; dy = 0;
+    } else {
+      dw = R.CANVAS_W; dh = dw / iRatio;
+      dx = 0; dy = (R.CANVAS_H - dh) / 2;
+    }
+    ctx.drawImage(bg, dx, dy, dw, dh);
   }
 
-  // 中缝柔化：一条纵向渐变把两张图接缝糊掉
-  const seam = ctx.createLinearGradient(R.CANVAS_W * 0.42, 0, R.CANVAS_W * 0.58, 0);
-  seam.addColorStop(0.00, "rgba(30,20,10,0)");
-  seam.addColorStop(0.50, "rgba(30,20,10,0.55)");
-  seam.addColorStop(1.00, "rgba(30,20,10,0)");
-  ctx.fillStyle = seam;
-  ctx.fillRect(R.CANVAS_W * 0.42, 0, R.CANVAS_W * 0.16, R.CANVAS_H);
-
-  // 全屏顶暗底暗（vignette 感）
+  // 顶暗底暗 vignette
   const vig = ctx.createLinearGradient(0, 0, 0, R.CANVAS_H);
   vig.addColorStop(0, "rgba(10,5,2,0.35)");
   vig.addColorStop(0.55, "rgba(10,5,2,0)");
@@ -130,9 +125,9 @@ function drawBackground(ctx, snap, tShow) {
 
   // 地面条 —— 深沥青
   const ground = ctx.createLinearGradient(0, R.GROUND_Y - 5, 0, R.CANVAS_H);
-  ground.addColorStop(0, "#3a2416");
-  ground.addColorStop(0.3, "#231610");
-  ground.addColorStop(1, "#0d0705");
+  ground.addColorStop(0, "rgba(58,36,22,0.85)");
+  ground.addColorStop(0.3, "rgba(35,22,16,0.9)");
+  ground.addColorStop(1, "rgba(13,7,5,1)");
   ctx.fillStyle = ground;
   ctx.fillRect(0, R.GROUND_Y, R.CANVAS_W, R.CANVAS_H - R.GROUND_Y);
 
@@ -148,153 +143,227 @@ function drawBackground(ctx, snap, tShow) {
 }
 
 // ==================================================================
-// 环境装饰 · 按对局种子固定散布
+// 玩家建筑剪影（深度：在背景之前、基地/单位之后）
 // ==================================================================
-let envCacheKey = null;
-let envProps = [];
-function hashStr(s) { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
-function ensureEnvironment(snap) {
-  const hk = snap.players.find(p => p.team === "hk");
-  const zom = snap.players.find(p => p.team === "zom");
-  const key = (hk?.civId || "-") + "|" + (zom?.civId || "-") + "|" + (snap.seed || 0);
-  if (envCacheKey === key) return;
-  envCacheKey = key;
-  envProps = [];
-  const rng = Sim.makeRng(hashStr(key));
-  const types = [
-    { key: "env_car",    h: 66, weight: 0.7, foreground: false },
-    { key: "env_debris", h: 42, weight: 1.4, foreground: false },
-    { key: "env_lamp",   h: 100, weight: 0.5, foreground: false },
-    { key: "env_trash",  h: 44, weight: 1.1, foreground: false },
-  ];
-  const totalW = types.reduce((a, b) => a + b.weight, 0);
+// 每种建筑在 sim 中最多 cap 个；渲染这里也最多画 cap 个
+// offsets 是相对 baseX、朝中路方向的偏移
+const BUILDING_LAYOUT = {
+  income:  { offsets: [55, 95, 135, 175, 215, 255], height: 62, kind: "warehouse" },
+  pop:     { offsets: [75, 115, 155, 195, 235, 275], height: 58, kind: "house" },
+  tech_a:  { offsets: [42], height: 82, kind: "tower", tiers: 2 },
+  tech_b:  { offsets: [92], height: 100, kind: "tower", tiers: 3 },
+  tech_c:  { offsets: [142], height: 118, kind: "tower", tiers: 4 },
+};
 
-  // 远景撒 12 个（在地面往上一点点，靠近 GROUND_Y）
-  for (let i = 0; i < 12; i++) {
-    let r = rng() * totalW, chosen = types[0], acc = 0;
-    for (const t of types) { acc += t.weight; if (r <= acc) { chosen = t; break; } }
-    // x 在 [70, W-70]，尽量避开正中战斗热区 [540, 740]
-    let px;
-    for (let tries = 0; tries < 6; tries++) {
-      px = 70 + rng() * (R.CANVAS_W - 140);
-      if (px < 540 || px > 740) break;
+function drawPlayerBuildings(ctx, snap) {
+  // 后排先画，前排后画（前排会盖住后排）
+  const players = [...snap.players].sort((a, b) => (b.row || 0) - (a.row || 0));
+  for (const p of players) {
+    if (p.baseX == null || !p.built) continue;
+    const isHK = p.team === "hk";
+    const dirOut = isHK ? +1 : -1; // 朝中路方向
+    const row = p.row || 0;
+    const rowScale = row === 1 ? 0.72 : 1.0; // 后排小一号（透视）
+    const civ = CIVS[p.civId] || {};
+    const color = civ.color || "#666";
+    const accent = civ.accent || "#e0d090";
+
+    for (const [kind, count] of Object.entries(p.built)) {
+      if (kind === "hq" || count <= 0) continue;
+      const slot = BUILDING_LAYOUT[kind];
+      if (!slot) continue;
+      const n = Math.min(count, slot.offsets.length);
+      for (let i = 0; i < n; i++) {
+        const worldX = p.baseX + dirOut * slot.offsets[i];
+        const { cx, cy } = toCanvas(worldX, 0, row);
+        // 距离越靠中路 → 视觉稍微再缩小一点（近端到远端 1.0 → 0.85）
+        const distScale = 1 - Math.min(0.15, slot.offsets[i] / 1600);
+        const h = slot.height * rowScale * distScale;
+        drawBuildingSilhouette(ctx, cx, cy, h, slot.kind, slot.tiers || 1, color, accent, dirOut < 0);
+      }
     }
-    const py = R.GROUND_Y + rng() * 8;                    // 稍微下探 = 落在地上
-    const flip = rng() > 0.5;
-    const scale = 0.75 + rng() * 0.35;
-    envProps.push({ key: chosen.key, h: chosen.h * scale, x: px, y: py, flip, z: py });
-  }
-  // 前景撒 5 个（更靠近底部，会盖住单位一点点，营造深度）
-  for (let i = 0; i < 5; i++) {
-    let r = rng() * totalW, chosen = types[0], acc = 0;
-    for (const t of types) { acc += t.weight; if (r <= acc) { chosen = t; break; } }
-    let px;
-    for (let tries = 0; tries < 6; tries++) {
-      px = 30 + rng() * (R.CANVAS_W - 60);
-      if (px < 500 || px > 780) break;
-    }
-    const py = R.GROUND_Y + 30 + rng() * 40;
-    const flip = rng() > 0.5;
-    const scale = 0.85 + rng() * 0.35;
-    envProps.push({ key: chosen.key, h: chosen.h * scale, x: px, y: py, flip, z: py + 200 });
-  }
-  // z 排序：先画远（小 z）
-  envProps.sort((a, b) => a.z - b.z);
-}
-function drawEnvBack(ctx) {
-  // 只画背景层（z < 200 的都是背景）
-  for (const p of envProps) {
-    if (p.z >= 200) continue;
-    drawEnvProp(ctx, p);
   }
 }
-function drawEnvFront(ctx) {
-  for (const p of envProps) {
-    if (p.z < 200) continue;
-    drawEnvProp(ctx, p);
-  }
-}
-function drawEnvProp(ctx, p) {
-  const img = IMG[p.key];
-  if (!img) return;
-  const w = p.h * (img.width / img.height);
+
+function drawBuildingSilhouette(ctx, x, groundY, h, kind, tiers, color, accent, flip) {
   ctx.save();
-  // 阴影托一下
+  ctx.translate(x, groundY);
+  if (flip) ctx.scale(-1, 1);
+
+  // 脚下阴影
   ctx.fillStyle = "rgba(0,0,0,0.35)";
-  ctx.beginPath(); ctx.ellipse(p.x, p.y + 2, w * 0.4, 4, 0, 0, Math.PI * 2); ctx.fill();
-  if (p.flip) {
-    ctx.translate(p.x, 0); ctx.scale(-1, 1);
-    ctx.drawImage(img, -w / 2, p.y - p.h, w, p.h);
-  } else {
-    ctx.drawImage(img, p.x - w / 2, p.y - p.h, w, p.h);
+  ctx.beginPath(); ctx.ellipse(0, 3, h * 0.38, 4, 0, 0, Math.PI * 2); ctx.fill();
+
+  ctx.strokeStyle = "#0a0503"; ctx.lineWidth = 1.5;
+
+  if (kind === "warehouse") {
+    // 仓库 / 拾荒场：矮方屋 + 双坡顶
+    const w = h * 1.1;
+    const bodyH = h * 0.72;
+    ctx.fillStyle = color;
+    ctx.fillRect(-w/2, -bodyH, w, bodyH);
+    ctx.strokeRect(-w/2, -bodyH, w, bodyH);
+    // 顶
+    ctx.fillStyle = shade(color, -0.25);
+    ctx.beginPath();
+    ctx.moveTo(-w/2 - 3, -bodyH);
+    ctx.lineTo(0, -h);
+    ctx.lineTo(w/2 + 3, -bodyH);
+    ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    // 大门
+    ctx.fillStyle = "#180d08";
+    ctx.fillRect(-w*0.18, -bodyH*0.55, w*0.36, bodyH*0.55);
+    // 金条腰带（income 提示）
+    ctx.fillStyle = accent;
+    ctx.fillRect(-w*0.42, -bodyH*0.9, w*0.84, 3);
+  } else if (kind === "house") {
+    // 民房：斜顶小屋 + 两扇窗
+    const w = h * 0.95;
+    const bodyH = h * 0.62;
+    ctx.fillStyle = color;
+    ctx.fillRect(-w/2, -bodyH, w, bodyH);
+    ctx.strokeRect(-w/2, -bodyH, w, bodyH);
+    // 屋顶
+    ctx.fillStyle = "#5c3620";
+    ctx.beginPath();
+    ctx.moveTo(-w/2 - 4, -bodyH);
+    ctx.lineTo(0, -h);
+    ctx.lineTo(w/2 + 4, -bodyH);
+    ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    // 窗
+    ctx.fillStyle = "#f6c94a";
+    ctx.fillRect(-w*0.34, -bodyH*0.85, w*0.22, bodyH*0.3);
+    ctx.fillRect( w*0.12, -bodyH*0.85, w*0.22, bodyH*0.3);
+    // 门
+    ctx.fillStyle = "#180d08";
+    ctx.fillRect(-w*0.1, -bodyH*0.45, w*0.2, bodyH*0.45);
+  } else if (kind === "tower") {
+    // 科技塔：多层收窄
+    const w = h * 0.5;
+    const tierH = h * 0.85 / tiers;
+    for (let i = 0; i < tiers; i++) {
+      const y0 = -tierH * (i + 1);
+      const shrink = i * (w * 0.08);
+      const tw = w - shrink * 2;
+      ctx.fillStyle = i === tiers - 1 ? accent : color;
+      ctx.fillRect(-tw/2, y0, tw, tierH);
+      ctx.strokeRect(-tw/2, y0, tw, tierH);
+      // 每层小窗
+      ctx.fillStyle = "#f6c94a";
+      ctx.fillRect(-tw*0.15, y0 + tierH*0.32, tw*0.3, tierH*0.22);
+    }
+    // 最高级塔顶天线
+    if (tiers >= 4) {
+      ctx.strokeStyle = "#1c1410"; ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, -h * 0.86);
+      ctx.lineTo(0, -h);
+      ctx.stroke();
+      ctx.fillStyle = "#ff4444";
+      ctx.beginPath(); ctx.arc(0, -h, 3, 0, Math.PI*2); ctx.fill();
+    }
   }
+
   ctx.restore();
 }
 
+function shade(hex, amt) {
+  // hex "#rrggbb" -> lighten/darken by amt (-1..1)
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex);
+  if (!m) return hex;
+  const n = parseInt(m[1], 16);
+  let r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  const f = amt < 0 ? 0 : 255, t = amt < 0 ? -amt : amt;
+  r = Math.round(r + (f - r) * t);
+  g = Math.round(g + (f - g) * t);
+  b = Math.round(b + (f - b) * t);
+  return "#" + ((r<<16)|(g<<8)|b).toString(16).padStart(6, "0");
+}
+
 // ==================================================================
-// 基地
+// 基地（每玩家一座）
 // ==================================================================
 function drawBases(ctx, snap) {
-  const hkP = snap.players.find(p => p.team === "hk");
-  const zomP = snap.players.find(p => p.team === "zom");
-  const { cx: hkX } = toCanvas(Sim.HQ_HK_X, 0, 0);
-  const { cx: zomX } = toCanvas(Sim.HQ_ZOM_X, 0, 0);
-  drawBase(ctx, hkX, R.GROUND_Y, hkP?.civId || "hk_finance", "hk", snap.hp.hk / snap.hpMax.hk);
-  drawBase(ctx, zomX, R.GROUND_Y, zomP?.civId || "zom_classic", "zom", snap.hp.zom / snap.hpMax.zom);
-}
-function drawBase(ctx, x, groundY, civId, team, hpRatio) {
-  const img = IMG[CIV_BASE[civId]];
-  const targetH = 150;
-  ctx.save();
-  // 受创震动
-  if (hpRatio < 0.35) {
-    ctx.translate(x + (Math.random() - 0.5) * 3, groundY);
-  } else {
-    ctx.translate(x, groundY);
+  // 后排先画（视觉在后），前排后画（在前）
+  const players = [...snap.players].sort((a, b) => (b.row || 0) - (a.row || 0));
+  for (const p of players) {
+    if (p.baseX == null) continue;
+    const { cx, cy } = toCanvas(p.baseX, 0, p.row || 0);
+    const hpRatio = p.baseHpMax > 0 ? Math.max(0, p.baseHp / p.baseHpMax) : 0;
+    const scale = (p.row === 1) ? 0.72 : 1.0;
+    drawBase(ctx, cx, cy, p.civId, p.team, hpRatio, scale, p);
   }
+}
+function drawBase(ctx, x, groundY, civId, team, hpRatio, scale, player) {
+  const img = IMG[CIV_BASE[civId]];
+  const targetH = 150 * scale;
+  const dead = hpRatio <= 0;
+  ctx.save();
+  if (dead) ctx.globalAlpha = 0.45;
+  // 受创震动
+  const shake = (hpRatio < 0.35 && !dead) ? (Math.random() - 0.5) * 3 : 0;
+  ctx.translate(x + shake, groundY);
   if (img) {
     const w = targetH * (img.width / img.height);
-    // 面向战场：HK 基地(左侧) 不翻转，僵尸基地(右侧) 翻转（基地图默认都是 3/4 视角，可视做正面）
-    // 实际测试都是正面朝观众，不需要翻转
     ctx.drawImage(img, -w / 2, -targetH, w, targetH);
+    // 爆掉的基地叠一层焦黑
+    if (dead) {
+      ctx.fillStyle = "rgba(10,5,2,0.55)";
+      ctx.fillRect(-w/2, -targetH, w, targetH);
+    }
   } else {
-    // 兜底方块
     const civ = CIVS[civId];
     ctx.fillStyle = civ?.color || "#333"; ctx.strokeStyle = "#1a120b"; ctx.lineWidth = 4;
-    ctx.fillRect(-60, -120, 120, 120); ctx.strokeRect(-60, -120, 120, 120);
+    ctx.fillRect(-60*scale, -120*scale, 120*scale, 120*scale);
+    ctx.strokeRect(-60*scale, -120*scale, 120*scale, 120*scale);
   }
+  ctx.globalAlpha = 1;
+  ctx.restore();
 
-  // 招牌 + HP
+  // 招牌 + HP（不做震动，读得清楚）
+  ctx.save();
+  ctx.translate(x, groundY - targetH);
   const civ = CIVS[civId] || { name: "?", accent: "#ffd" };
-  ctx.fillStyle = "rgba(0,0,0,0.65)";
-  ctx.strokeStyle = "#000"; ctx.lineWidth = 2;
-  const label = civ.name.slice(0, 6);
-  ctx.font = "bold 14px 'Microsoft YaHei', sans-serif";
+  const pn = (player?.name ? player.name.slice(0, 4) + " · " : "");
+  const label = pn + civ.name.slice(0, 5);
+  ctx.font = "bold 12px 'Microsoft YaHei', sans-serif";
   const textW = ctx.measureText(label).width;
-  const boxW = Math.max(textW + 20, 90);
-  ctx.fillRect(-boxW / 2, -targetH - 30, boxW, 22);
-  ctx.strokeRect(-boxW / 2, -targetH - 30, boxW, 22);
-  ctx.fillStyle = hpRatio < 0.3 ? "#ff8888" : civ.accent || "#ffe0a0";
+  const boxW = Math.max(textW + 16, 88);
+  ctx.fillStyle = dead ? "rgba(70,20,20,0.8)" : "rgba(0,0,0,0.7)";
+  ctx.strokeStyle = "#000"; ctx.lineWidth = 2;
+  ctx.fillRect(-boxW / 2, -28, boxW, 20);
+  ctx.strokeRect(-boxW / 2, -28, boxW, 20);
+  ctx.fillStyle = dead ? "#ff7070" : (hpRatio < 0.3 ? "#ff8888" : civ.accent || "#ffe0a0");
   ctx.textAlign = "center";
-  ctx.fillText(label, 0, -targetH - 14);
+  ctx.fillText(dead ? "💀 " + label : label, 0, -13);
 
   // HP 条
   const barW = boxW - 8, barH = 4;
-  ctx.fillStyle = "#000"; ctx.fillRect(-barW / 2, -targetH - 6, barW, barH);
-  ctx.fillStyle = hpRatio > 0.5 ? "#5cd66d" : hpRatio > 0.25 ? "#f6a13d" : "#c93c3c";
-  ctx.fillRect(-barW / 2, -targetH - 6, barW * hpRatio, barH);
+  ctx.fillStyle = "#000"; ctx.fillRect(-barW / 2, -6, barW, barH);
+  ctx.fillStyle = dead ? "#333" : (hpRatio > 0.5 ? "#5cd66d" : hpRatio > 0.25 ? "#f6a13d" : "#c93c3c");
+  ctx.fillRect(-barW / 2, -6, barW * Math.max(0, hpRatio), barH);
+  ctx.restore();
 
   // 受创冒烟
-  if (hpRatio < 0.45) {
+  if (hpRatio < 0.45 && !dead) {
     ctx.fillStyle = "rgba(40,40,40,0.5)";
     for (let i = 0; i < 3; i++) {
-      const puffX = (Math.random() - 0.5) * 60;
-      const puffY = -targetH - 30 - Math.random() * 40;
+      const puffX = x + (Math.random() - 0.5) * 60;
+      const puffY = groundY - targetH * 0.6 - Math.random() * 40;
       ctx.beginPath(); ctx.arc(puffX, puffY, 6 + Math.random() * 6, 0, Math.PI * 2); ctx.fill();
     }
   }
-
-  ctx.restore();
+  // 已死冒黑烟
+  if (dead) {
+    ctx.fillStyle = "rgba(20,15,10,0.6)";
+    for (let i = 0; i < 5; i++) {
+      const puffX = x + (Math.random() - 0.5) * 80;
+      const puffY = groundY - targetH * 0.7 - Math.random() * 80;
+      ctx.beginPath(); ctx.arc(puffX, puffY, 8 + Math.random() * 10, 0, Math.PI * 2); ctx.fill();
+    }
+  }
 }
 
 // ==================================================================
@@ -318,9 +387,22 @@ function drawUnit(ctx, u, tShow) {
   }
   ctx.translate(0, jumpH);
 
-  // 走路轻微上下抖（不影响画面稳定，幅度 <=2px）
+  // 走路轻微上下抖
   const walk = Math.sin(tShow * 8 + u.id) * 1.5;
   ctx.translate(0, walk);
+
+  // 攻击动画：0~ATK_WIN 秒内做一次向前突刺（bell 曲线）
+  const ATK_WIN = 0.22;
+  const atkAge = u.atkFxTime ? (tShow - u.atkFxTime) : 999;
+  const isAtk = atkAge >= 0 && atkAge < ATK_WIN;
+  const atkP = isAtk ? (atkAge / ATK_WIN) : 0;
+  const atkBell = isAtk ? Math.sin(atkP * Math.PI) : 0;
+  const range = u.def?.range || 24;
+  const isMelee = range <= 40;
+  const isRanged = !isMelee;
+  const lungeX = isAtk ? (dir * atkBell * (isMelee ? 10 : 4)) : 0;
+  const recoilX = isRanged && isAtk ? (-dir * atkBell * 3) : 0;
+  ctx.translate(lungeX + recoilX, 0);
 
   // 阴影（脚下小椭圆）
   ctx.fillStyle = "rgba(0,0,0,0.4)";
@@ -330,13 +412,12 @@ function drawUnit(ctx, u, tShow) {
 
   if (img) {
     const W = H * (img.width / img.height);
-    // 决定是否水平翻转：HK 贴图默认朝右(dir=+1)，Zom 贴图默认朝左(dir=-1)
-    const spriteNaturalDir = imgKey.startsWith("hk_") ? +1 : -1;
+    // 所有贴图统一默认朝右（+1）：dir=-1 就翻转
+    const spriteNaturalDir = +1;
     const flipX = dir !== spriteNaturalDir;
     if (flipX) ctx.scale(-1, 1);
     // 鬼魂半透明
     if (u.def.arch === "zom_ghost") ctx.globalAlpha = 0.7;
-    // 被魅惑：淡紫描边（用滤镜太重，用叠色代替）
     ctx.drawImage(img, -W / 2, -H, W, H);
     if (u.charmedBy) {
       ctx.globalCompositeOperation = "source-atop";
@@ -346,9 +427,43 @@ function drawUnit(ctx, u, tShow) {
     }
     ctx.globalAlpha = 1;
   } else {
-    // 兜底：小方块
     ctx.fillStyle = u.team === "hk" ? "#4a70a8" : "#5a3a3a";
     ctx.fillRect(-8, -H, 16, H);
+  }
+
+  // 近战：挥砍弧线 + 击打星芒
+  if (isAtk && isMelee) {
+    ctx.save();
+    ctx.translate(dir * 12, -H * 0.55);
+    const a0 = -Math.PI * 0.55 + atkP * Math.PI * 1.0;
+    const a1 = -Math.PI * 0.15 + atkP * Math.PI * 1.0;
+    ctx.strokeStyle = `rgba(255,240,180,${(1 - atkP) * 0.9})`;
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(0, 0, 20, a0, a1); ctx.stroke();
+    // 冲击星
+    if (atkP > 0.35 && atkP < 0.75) {
+      ctx.strokeStyle = `rgba(255,200,80,${1 - atkP})`;
+      ctx.lineWidth = 2;
+      for (let i = 0; i < 4; i++) {
+        const ang = i * Math.PI / 2 + atkP * 3;
+        ctx.beginPath();
+        ctx.moveTo(dir * 4 + Math.cos(ang) * 4, Math.sin(ang) * 4);
+        ctx.lineTo(dir * 4 + Math.cos(ang) * 10, Math.sin(ang) * 10);
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+  // 远程：枪口闪光
+  if (isAtk && isRanged && atkP < 0.35) {
+    ctx.save();
+    const mx = dir * 14;
+    const my = -H * 0.55;
+    ctx.fillStyle = `rgba(255,235,120,${1 - atkP * 3})`;
+    ctx.beginPath(); ctx.arc(mx, my, 6 - atkP * 8, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = `rgba(255,160,40,${0.8 - atkP * 3})`;
+    ctx.beginPath(); ctx.arc(mx + dir * 4, my, 4, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
   }
 
   ctx.restore();
@@ -441,6 +556,48 @@ function drawEffect(ctx, e, tShow) {
       ctx.fillRect(0, 0, R.CANVAS_W, R.CANVAS_H);
       break;
     }
+    case "fire_burst": {
+      // 爆炸火团：外烟 → 橙焰 → 白核
+      const { cx, cy } = toCanvas(e.x, e.y || 0, 0);
+      const initLife = e.initLife || 0.55;
+      const life = Math.max(0, e.life);
+      const t = 1 - life / initLife;                        // 0..1
+      const r = e.r * (0.5 + t * 1.3);
+      ctx.fillStyle = `rgba(80,50,30,${(1 - t) * 0.45})`;
+      ctx.beginPath(); ctx.arc(cx, cy - 8, r * 0.95, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = `rgba(255,130,30,${(1 - t) * 0.95})`;
+      ctx.beginPath(); ctx.arc(cx, cy - 4, r * 0.7, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = `rgba(255,235,140,${(1 - t) * 0.9})`;
+      ctx.beginPath(); ctx.arc(cx, cy - 4, r * 0.4, 0, Math.PI * 2); ctx.fill();
+      // 火星
+      for (let i = 0; i < 4; i++) {
+        const ang = i * 1.57 + t * 3;
+        const rr = r * (0.7 + t * 0.5);
+        ctx.fillStyle = `rgba(255,200,80,${(1 - t) * 0.8})`;
+        ctx.beginPath();
+        ctx.arc(cx + Math.cos(ang) * rr, cy - 4 + Math.sin(ang) * rr * 0.4, 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      break;
+    }
+    case "spark": {
+      // 子弹命中火花
+      const { cx, cy } = toCanvas(e.x, e.y || 0, 0);
+      const initLife = e.initLife || 0.14;
+      const t = 1 - Math.max(0, e.life) / initLife;
+      ctx.fillStyle = `rgba(255,240,120,${1 - t})`;
+      ctx.beginPath(); ctx.arc(cx, cy - 20, 3 + t * 3, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = `rgba(255,220,80,${(1 - t) * 0.85})`;
+      ctx.lineWidth = 1.5;
+      for (let i = 0; i < 5; i++) {
+        const a = i * 1.25 + t * 2;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy - 20);
+        ctx.lineTo(cx + Math.cos(a) * (4 + t * 12), cy - 20 + Math.sin(a) * (4 + t * 12));
+        ctx.stroke();
+      }
+      break;
+    }
   }
   ctx.restore();
 }
@@ -449,13 +606,57 @@ function drawProjectile(ctx, pr) {
   const t = pr.t / pr.dur;
   const x = pr.x_from + (pr.x_to - pr.x_from) * t;
   const y = pr.y_from + (pr.y_to - pr.y_from) * t;
-  const arc = -Math.sin(t * Math.PI) * 80;
+  const arcH = (pr.kind === "bullet") ? 0
+             : (pr.kind === "molotov") ? 55
+             : 80;
+  const arc = -Math.sin(t * Math.PI) * arcH;
   const { cx, cy } = toCanvas(x, y + arc, 0);
+
   if (pr.kind === "lob") {
+    // 石块 + 拖尾烟
+    for (let i = 3; i >= 1; i--) {
+      const tt = Math.max(0, t - i * 0.07);
+      const xt = pr.x_from + (pr.x_to - pr.x_from) * tt;
+      const yt = pr.y_from + (pr.y_to - pr.y_from) * tt - Math.sin(tt * Math.PI) * arcH;
+      const { cx: sx, cy: sy } = toCanvas(xt, yt, 0);
+      ctx.fillStyle = `rgba(180,160,140,${0.15 * i})`;
+      ctx.beginPath(); ctx.arc(sx, sy, 3 + i, 0, Math.PI * 2); ctx.fill();
+    }
     ctx.fillStyle = "#4a2a1a"; ctx.strokeStyle = "#1a0a05"; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.arc(cx, cy, 6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.arc(cx, cy, 7, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  } else if (pr.kind === "molotov") {
+    // 火焰瓶：旋转的绿瓶 + 尾焰
+    for (let i = 4; i >= 1; i--) {
+      const tt = Math.max(0, t - i * 0.05);
+      const xt = pr.x_from + (pr.x_to - pr.x_from) * tt;
+      const yt = pr.y_from + (pr.y_to - pr.y_from) * tt - Math.sin(tt * Math.PI) * arcH;
+      const { cx: sx, cy: sy } = toCanvas(xt, yt, 0);
+      const a = 0.14 * i;
+      ctx.fillStyle = i > 2 ? `rgba(255,120,30,${a})` : `rgba(255,220,80,${a * 1.2})`;
+      ctx.beginPath(); ctx.arc(sx, sy, 3 + i * 0.8, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(t * Math.PI * 3);
+    ctx.fillStyle = "#3d6b2a"; ctx.strokeStyle = "#12200c"; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.ellipse(0, 0, 4, 6, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    // 瓶口火苗
+    ctx.fillStyle = "rgba(255,220,80,0.95)";
+    ctx.beginPath(); ctx.arc(0, -6, 2.5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "rgba(255,120,20,0.7)";
+    ctx.beginPath(); ctx.arc(0, -8, 1.8, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  } else if (pr.kind === "bullet") {
+    // 子弹曳光
+    const alpha = Math.max(0, 1 - t * 0.6);
+    const p0 = toCanvas(pr.x_from, pr.y_from, 0);
+    ctx.strokeStyle = `rgba(255,240,120,${alpha})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(p0.cx, p0.cy); ctx.lineTo(cx, cy); ctx.stroke();
+    // 弹头
+    ctx.fillStyle = `rgba(255,255,180,${alpha})`;
+    ctx.beginPath(); ctx.arc(cx, cy, 2, 0, Math.PI * 2); ctx.fill();
   } else if (pr.kind === "barrage_zombie") {
-    // 小僵尸剪影
     const img = IMG["zom_normal"];
     if (img) {
       const H = 24; const W = H * (img.width / img.height);
@@ -493,14 +694,16 @@ function drawCorpse(ctx, c, tShow) {
 // 主入口
 // ==================================================================
 function render(ctx, snap, tShow, meSeat) {
-  ensureEnvironment(snap);
+  drawBackground(ctx, snap);
 
-  drawBackground(ctx, snap, tShow);
-  drawEnvBack(ctx);
-  drawBases(ctx, snap);
+  // 玩家建造的建筑（深度：背景之前、基地/单位之后）
+  drawPlayerBuildings(ctx, snap);
 
-  // 尸体先画
+  // 尸体
   snap.corpses.forEach(c => drawCorpse(ctx, c, tShow));
+
+  // 基地（后排先，前排后）
+  drawBases(ctx, snap);
 
   // 单位按 y 排序（近处盖过远处）
   const orderedUnits = [...snap.units].sort((a, b) => (a.y + (a.row || 0) * 100) - (b.y + (b.row || 0) * 100));
@@ -509,10 +712,7 @@ function render(ctx, snap, tShow, meSeat) {
   // 投射物
   snap.projectiles.forEach(pr => drawProjectile(ctx, pr));
 
-  // 前景环境
-  drawEnvFront(ctx);
-
-  // 全屏效果（大招 / 爆炸）
+  // 全屏效果（大招 / 爆炸 / 火团 / 火花）
   snap.effects.forEach(e => drawEffect(ctx, e, tShow));
 
   // 我方单位金圈

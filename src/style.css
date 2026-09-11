@@ -292,6 +292,29 @@ button{ font-family:inherit; }
 .hp-zom{ flex-direction: row-reverse; }
 .hp-zom .hp-fg{ float: right; }
 
+/* 每玩家一条基地血条：容器包在 .hp-hk / .hp-zom 内 */
+.hp-multi{
+  flex: 1;
+  display: flex; flex-direction: column; gap: 2px;
+  min-width: 0;
+}
+.hp-multi .hp-row{
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px;
+}
+.hp-zom .hp-multi .hp-row{ flex-direction: row-reverse; }
+.hp-multi .hp-who{
+  flex: 0 0 auto; min-width: 80px; max-width: 120px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  font-weight: 700; font-size: 11px;
+}
+.hp-multi .hp-civ{ font-weight: 400; opacity: 0.65; font-size: 10px; }
+.hp-multi .hp-fill{ height: 10px; flex: 1; }
+.hp-multi .hp-value{ min-width: 60px; text-align: right; }
+.hp-zom .hp-multi .hp-value{ text-align: left; }
+.hp-multi .hp-row.dead .hp-who{ text-decoration: line-through; opacity: 0.5; }
+.hp-multi .hp-row.dead .hp-value{ color: #c74848; }
+
 .hud-center{
   display:flex; gap: 4px; align-items: center;
 }
