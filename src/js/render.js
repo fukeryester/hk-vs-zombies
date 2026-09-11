@@ -49,22 +49,23 @@ const ZOM_FALLBACK = {
   melee_cheap:  "zom_normal",
   melee_fast:   "zom_hop",
 };
-// 更强的体型差异化 —— 巨人有压迫感，小僵尸/跳蚤更矮
+// 体型差异化 —— 巨人有压迫感，小兵适中，跳蚤矮小
+// 因为新 sheet 紧凑裁剪，ARCH_HEIGHT 就是屏幕实际像素高度
 const ARCH_HEIGHT = {
-  melee_cheap:  55,
-  melee_tank:   88,
-  melee_fast:   48,
-  ranged_light: 60,
-  ranged_aoe:   64,
-  ranged_heavy: 78,
-  support:      66,
-  zom_normal:   56,
-  zom_hopper:   42,
-  zom_banshee:  76,
-  zom_giant:    145,   // 巨人：整整 2.5x 普通僵尸，很有压迫感
-  zom_cata:     82,
-  zom_toxic:    62,
-  zom_ghost:    70,
+  melee_cheap:  62,    // 打工人：中等
+  melee_tank:   82,    // 防暴警察：壮实
+  melee_fast:   50,    // 小混混：矮小灵活
+  ranged_light: 66,    // 经纪人：中偏高
+  ranged_aoe:   65,    // 厨子：壮实
+  ranged_heavy: 78,    // 特警：高大
+  support:      68,    // 道士：中等
+  zom_normal:   65,    // 经典僵尸：中等
+  zom_hopper:   42,    // 跳蚤：趴地上，很矮
+  zom_banshee:  74,    // 女鬼：高挑
+  zom_giant:    130,   // 巨人僵尸：2x 普通，很有压迫感
+  zom_cata:     78,    // 投石僵尸：中偏大
+  zom_toxic:    64,    // 毒液僵尸：中等
+  zom_ghost:    72,    // 幽灵僵尸：中偏高
 };
 
 function imgForUnit(u) {
@@ -75,62 +76,34 @@ function imgForUnit(u) {
 function heightForUnit(u) { return ARCH_HEIGHT[u.def.arch] || 60; }
 
 // ==================================================================
-// 帧动画映射
+// 帧动画映射 —— 每个兵种 arch 有独立外观的 sprite sheet
 // ==================================================================
-// 兵种基础 sprite 类型 —— 决定用哪套帧动画表
-function pickAnimBase(u) {
+// arch → anim sheet key 前缀
+// HK archs: melee_cheap → "hk_melee_cheap"
+// ZOM archs: zom_normal → "zom_normal"
+function animKeyForUnit(u) {
   const arch = u.def.arch;
-  if (u.team === "hk") {
-    // hk_slum 用 orc（更粗犷）；其他 hk 用 soldier
-    return u.civId === "hk_slum" ? "orc" : "soldier";
-  }
-  // 僵尸队伍：按 arch 决定
-  switch (arch) {
-    case "zom_giant": return "zbig";
-    case "zom_cata":  return "zaxe";
-    default:          return "zsmall";
-  }
-}
-
-// 攻击动画挑选（soldier / orc 有 3 套 attack sheet）
-function pickAttackAnim(base, arch) {
-  if (base === "soldier") {
-    if (arch === "ranged_light" || arch === "ranged_aoe" || arch === "ranged_heavy") return "atk3";
-    if (arch === "melee_tank" || arch === "support") return "atk2";
-    return "atk1";
-  }
-  if (base === "orc") {
-    if (arch === "ranged_light" || arch === "ranged_aoe" || arch === "ranged_heavy") return "atk2";
-    return "atk1";
-  }
-  return "atk";  // 僵尸类只有一套
+  if (arch.startsWith("zom_")) return arch;
+  return "hk_" + arch;
 }
 
 // 走路速度调制：跳蚤走得快，巨人走得慢
 const ARCH_WALK_FPS = {
   melee_fast: 14, zom_hopper: 16,
-  melee_tank: 8,  zom_giant: 6,
+  melee_tank: 7,  zom_giant: 5,
+  zom_ghost: 7,   zom_banshee: 8,
 };
 function walkFpsForArch(arch) { return ARCH_WALK_FPS[arch] || 10; }
-function attackFpsForArch(arch) { return arch === "zom_giant" ? 10 : 14; }
 
-// 文明染色（source-atop 叠加，让同 arch 不同 civ 一眼看出区别）
+// 文明染色（轻微 source-atop 叠加，同 arch 不同 civ 一眼可辨）
 const CIV_TINT = {
-  hk_finance: "rgba( 60,120,220,0.20)",   // 冷蓝
-  hk_slum:    "rgba(200,110, 50,0.20)",   // 暖橙
-  hk_police:  "rgba( 70,150, 90,0.22)",   // 军绿
-  zom_classic:"rgba(120,140, 60,0.16)",   // 腐黄
-  zom_ghost:  "rgba(170,210,230,0.22)",   // 幽蓝
-  zom_bio:    "rgba( 60,180,110,0.24)",   // 生化绿
+  hk_finance: "rgba( 60,120,220,0.14)",
+  hk_slum:    "rgba(200,110, 50,0.14)",
+  hk_police:  "rgba( 70,150, 90,0.16)",
+  zom_classic:"rgba(120,140, 60,0.10)",
+  zom_ghost:  "rgba(170,210,230,0.15)",
+  zom_bio:    "rgba( 60,180,110,0.16)",
 };
-
-// 兵种个体色偏移（同 civ 同 arch 内也再有微差）
-function unitHueBias(u) {
-  // 用 unit key（civId + arch name）做确定性偏移
-  const s = (u.civId || "") + "|" + (u.def?.name || "") + "|" + u.def.arch;
-  let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
-  return (h % 40) - 20;   // -20 ~ +20 度
-}
 
 // civ → 背景 & 基地贴图
 const CIV_BG = {
@@ -445,23 +418,21 @@ function drawUnit(ctx, u, tShow) {
   const H = heightForUnit(u) * rowMul;
 
   // ---- 挑帧动画 sheet + 当前帧 ----
-  const base = pickAnimBase(u);
   const arch = u.def.arch;
+  const animKey = animKeyForUnit(u) + "_walk";
+  let anim = IMG_ANIM[animKey];
 
   // 判定动作：最近攻击窗 → 攻击 / 否则走路
-  const ATK_SHOW = 0.55;    // 攻击动画播放窗（秒）
+  const ATK_SHOW = 0.55;
   const atkAge = u.atkFxTime ? (tShow - u.atkFxTime) : 999;
   const isAtk = atkAge >= 0 && atkAge < ATK_SHOW;
-
-  const animName = isAtk ? pickAttackAnim(base, arch) : "walk";
-  let anim = IMG_ANIM[base + "_" + animName];
-  if (!anim) anim = IMG_ANIM[base + "_walk"] || IMG_ANIM[base + "_idle"];
 
   let frame = 0;
   if (anim) {
     if (isAtk) {
+      // 攻击时：冻结/慢放中间几帧 + 特效叠加
       const t = atkAge / ATK_SHOW;
-      frame = Math.max(0, Math.min(anim.frames - 1, Math.floor(t * anim.frames)));
+      frame = Math.max(0, Math.min(anim.frames - 1, Math.floor(t * anim.frames * 0.5 + 1)));
     } else {
       const fps = walkFpsForArch(arch);
       frame = Math.floor((tShow * fps + u.id * 3.13)) % anim.frames;

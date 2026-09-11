@@ -10,56 +10,42 @@ const IMG = {};
 const IMG_ANIM = {};
 
 const IMG_LIST = [
-  // 背景板（16:9 全屏 parallax）
+  // 背景板
   "bg_finance", "bg_slum", "bg_police",
   "bg_zomclassic", "bg_zomghost", "bg_zombio",
   // 6 座基地建筑
   "base_finance", "base_slum", "base_police",
   "base_zomclassic", "base_zomghost", "base_zombio",
-  // 香港单位（按 arch 分，作为菜单/卡面兜底）
+  // 香港单位静态图（兜底/卡面）
   "hk_peasant", "hk_tank", "hk_runner",
   "hk_ranged_light", "hk_ranged_aoe", "hk_ranged_heavy",
   "hk_caster",
-  // 僵尸单位
+  // 僵尸单位静态图（兜底/卡面）
   "zom_normal", "zom_hop", "zom_lady",
   "zom_giant", "zom_cata", "zom_toxic", "zom_ghost",
   // 环境装饰
   "env_debris", "env_car", "env_lamp", "env_trash",
 ];
 
-// 帧动画 sprite strip：所有 sheet 都是「1 行 × N 列」水平条
-//   fw/fh 加载后自动算出：fw = img.width / frames, fh = img.height
+// 帧动画 sprite strip：每套都是「1 行 × N 列」水平条
+// 每个兵种有独立外观的 walk sheet；attack 暂复用 walk + 叠加攻击特效
 const ANIM_LIST = [
-  // Soldier（100×100 / frame，Tiny RPG）
-  { key: "soldier_idle",  path: "img/anim/soldier_idle.png",  frames: 6  },
-  { key: "soldier_walk",  path: "img/anim/soldier_walk.png",  frames: 8  },
-  { key: "soldier_atk1",  path: "img/anim/soldier_atk1.png",  frames: 6  },
-  { key: "soldier_atk2",  path: "img/anim/soldier_atk2.png",  frames: 6  },
-  { key: "soldier_atk3",  path: "img/anim/soldier_atk3.png",  frames: 6  },
-  { key: "soldier_hurt",  path: "img/anim/soldier_hurt.png",  frames: 4  },
-  { key: "soldier_death", path: "img/anim/soldier_death.png", frames: 4  },
-  // Orc（100×100 / frame）
-  { key: "orc_idle",  path: "img/anim/orc_idle.png",  frames: 6  },
-  { key: "orc_walk",  path: "img/anim/orc_walk.png",  frames: 8  },
-  { key: "orc_atk1",  path: "img/anim/orc_atk1.png",  frames: 6  },
-  { key: "orc_atk2",  path: "img/anim/orc_atk2.png",  frames: 6  },
-  { key: "orc_hurt",  path: "img/anim/orc_hurt.png",  frames: 4  },
-  { key: "orc_death", path: "img/anim/orc_death.png", frames: 4  },
-  // Zombie_Small（PostyApocalypse）
-  { key: "zsmall_idle",  path: "img/anim/zsmall_idle.png",  frames: 6  },
-  { key: "zsmall_walk",  path: "img/anim/zsmall_walk.png",  frames: 6  },
-  { key: "zsmall_atk",   path: "img/anim/zsmall_atk.png",   frames: 4  },
-  { key: "zsmall_death", path: "img/anim/zsmall_death.png", frames: 6  },
-  // Zombie_Big（大只僵尸，pressure）
-  { key: "zbig_idle",    path: "img/anim/zbig_idle.png",    frames: 6  },
-  { key: "zbig_walk",    path: "img/anim/zbig_walk.png",    frames: 8  },
-  { key: "zbig_atk",     path: "img/anim/zbig_atk.png",     frames: 8  },
-  { key: "zbig_death",   path: "img/anim/zbig_death.png",   frames: 7  },
-  // Zombie_Axe（甩斧头，投射攻击）
-  { key: "zaxe_idle",    path: "img/anim/zaxe_idle.png",    frames: 6  },
-  { key: "zaxe_walk",    path: "img/anim/zaxe_walk.png",    frames: 8  },
-  { key: "zaxe_atk",     path: "img/anim/zaxe_atk.png",     frames: 7  },
-  { key: "zaxe_death",   path: "img/anim/zaxe_death.png",   frames: 6  },
+  // ---- HK（7 个 arch）----
+  { key: "hk_melee_cheap_walk",  path: "img/anim/hk_melee_cheap_walk.png",  frames: 6 },
+  { key: "hk_melee_tank_walk",   path: "img/anim/hk_melee_tank_walk.png",   frames: 6 },
+  { key: "hk_melee_fast_walk",   path: "img/anim/hk_melee_fast_walk.png",   frames: 6 },
+  { key: "hk_ranged_light_walk", path: "img/anim/hk_ranged_light_walk.png", frames: 6 },
+  { key: "hk_ranged_aoe_walk",   path: "img/anim/hk_ranged_aoe_walk.png",   frames: 6 },
+  { key: "hk_ranged_heavy_walk", path: "img/anim/hk_ranged_heavy_walk.png", frames: 6 },
+  { key: "hk_support_walk",      path: "img/anim/hk_support_walk.png",      frames: 6 },
+  // ---- 僵尸（7 个 arch）----
+  { key: "zom_normal_walk",  path: "img/anim/zom_normal_walk.png",  frames: 6 },
+  { key: "zom_hopper_walk",  path: "img/anim/zom_hopper_walk.png",  frames: 6 },
+  { key: "zom_banshee_walk", path: "img/anim/zom_banshee_walk.png", frames: 6 },
+  { key: "zom_giant_walk",   path: "img/anim/zom_giant_walk.png",   frames: 6 },
+  { key: "zom_cata_walk",    path: "img/anim/zom_cata_walk.png",    frames: 6 },
+  { key: "zom_toxic_walk",   path: "img/anim/zom_toxic_walk.png",   frames: 6 },
+  { key: "zom_ghost_walk",   path: "img/anim/zom_ghost_walk.png",   frames: 6 },
 ];
 
 function loadAssets(onProgress) {
@@ -87,7 +73,7 @@ function loadAssets(onProgress) {
       resolve();
     };
     img.onerror = () => { console.warn("[assets] missing anim:", spec.path); tick(spec.key); resolve(); };
-    img.src = spec.path + "?v=1";
+    img.src = spec.path + "?v=2";
   });
 
   return Promise.all([
