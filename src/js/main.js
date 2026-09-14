@@ -58,7 +58,9 @@
     const el = document.getElementById(name + "-screen");
     if (el) el.classList.add("active");
     if (name === "play") setTimeout(resizeCanvasToWrap, 0);
+    if (name === "menu") refreshRankPanel();
     if (name !== "codex" && typeof stopCodexUnitArts === "function") stopCodexUnitArts();
+    if (typeof UiBg !== "undefined") UiBg.setCombat(name === "play");
   }
 
   // ------------- Canvas 自适应视口 -------------
@@ -85,6 +87,7 @@
     bindLobbyUI();
     bindPlayUI();
     bindHelpUI();
+    if (typeof UiBg !== "undefined") UiBg.init();
 
     // 后台预热美术资源（不阻塞菜单）
     App.assetsReady = false;
@@ -106,12 +109,17 @@
     App.gameId = inferGameId();
     if (App.gameId && window.GameHubStats) {
       Stats.connect();
-      // 显示登录状态
-      setTimeout(() => {
+      // 显示登录状态 + 荣耀榜
+      const bootRank = () => {
         const acc = document.getElementById("menu-account");
         if (Stats.enabled()) acc.textContent = "已登录 · 云端进度已开启";
         else acc.textContent = "未登录 · 本地模式";
-      }, 800);
+        refreshRankPanel();
+      };
+      if (Stats.whenReady) Stats.whenReady().then(bootRank).catch(bootRank);
+      else setTimeout(bootRank, 800);
+    } else {
+      refreshRankPanel();
     }
     if (App.gameId && window.GameHubMatches) {
       Matches.connect();
@@ -131,6 +139,7 @@
     });
 
     showScreen("menu");
+    refreshRankPanel();
   });
 
   function inferGameId() {
@@ -145,16 +154,19 @@
         const a = el.dataset.action;
         if (a === "quick-1v1") startSinglePlayer("1v1");
         else if (a === "quick-2v2") startSinglePlayer("2v2");
+        else if (a === "quick-3v3") startSinglePlayer("3v3");
         else if (a === "host") hostRoom();
         else if (a === "join") openJoinScreen();
         else if (a === "codex") { showScreen("codex"); renderCodex(App.codexCiv); }
         else if (a === "codex-back") showScreen("menu");
+        else if (a === "rank-board") { showScreen("rank"); renderRankBoard(); }
+        else if (a === "rank-back") { showScreen("menu"); refreshRankPanel(); }
         else if (a === "help") showScreen("help");
         else if (a === "help-close") showScreen("menu");
         else if (a === "lobby-back") leaveLobby();
         else if (a === "join-back") showScreen("menu");
         else if (a === "join-confirm") joinConfirm();
-        else if (a === "end-menu") showScreen("menu");
+        else if (a === "end-menu") { leavePlay(); showScreen("menu"); }
         else if (a === "end-again") replay();
       });
     });
@@ -203,7 +215,7 @@
     }
     try {
       await Net.connect(App.gameId);
-      const r = await Net.createRoom(App.gameId, 4);
+      const r = await Net.createRoom(App.gameId, 6);
       Net.join(r.code);
       Net.startPing();
       App.isLocal = false;
@@ -284,15 +296,10 @@
         if (d.type === "lobby_state") { Lobby.applyLobbyState(d.state); renderLobby(); }
         else if (d.type === "lobby_ready") { Lobby.hostReceiveReady(d); renderLobby(); }
         else if (d.type === "start") {
+          if (App.screen === "play" && App.state && !App.state.over) break;
           startGameOnClient(d);
-        } else if (d.type === "snapshot") {
-          onSnapshot(d.snap);
         } else if (d.type === "action") {
-          // 房主收到客户端的操作
-          if (Net.iAmHost() && App.state) {
-            const a = d.act;
-            if (a) Sim.applyAction(App.state, a);
-          }
+          applyRemoteAction(d.act, d.from);
         } else if (d.type === "end") {
           onEndFromNet(d);
         }
@@ -322,7 +329,7 @@
     return "远程";
   }
   function buildingSummary(civ, kind, def) {
-    if (kind === B.HQ) return "基地核心，被打爆就输。";
+    if (kind === B.HQ) return "基地核心，被打爆就输。自带远程防御火力，会射击进入警戒区的敌军。";
     if (kind === B.INCOME) return `经济建筑，收入 +${def.effect?.income || 0}/s。`;
     if (kind === B.POP) return `人口建筑，人口上限 +${def.effect?.pop || 0}。`;
     if (kind === B.TECH_A) return "一级科技，解锁 T2 兵种。";
@@ -332,14 +339,14 @@
   }
   function skillIcon(s) {
     if (!s) return "✨";
-    if (s.kind === "summon") return "👥";
-    if (s.kind === "harvester") return "🚐";
-    if (s.kind === "airstrike") return "🚁";
-    if (s.kind === "buff_econ") return "💹";
-    if (s.kind === "barrage") return "🪨";
-    if (s.kind === "buff_army") return "🌕";
-    if (s.kind === "poison") return "☣️";
-    return "✨";
+    return ({
+      income_surge:"💹", hostile_takeover:"🤝", base_fortify:"🛡️",
+      summon:"👥", harvester:"🚐", fire_rain:"🍲",
+      stun:"🚧", precision_strike:"🎯", elite_drop:"🚔",
+      lane_spawn:"🪦", army_heal:"🫀", buff_army:"🌕",
+      flank_spawn:"👻", soul_drain:"🧿", mirror_shift:"🪞",
+      poison:"☣️", evolve:"🧬", radiation_field:"☢️",
+    })[s.kind] || "✨";
   }
   function summonTextForCiv(civId, skill) {
     const civ = CIVS[civId];
@@ -406,7 +413,7 @@
         const jump = u.jump ? ` · 跳跃 ${u.jump}` : "";
         return `
           <article class="codex-card">
-            <canvas class="codex-unit-art" data-team="${civ.side}" data-arch="${HUD.escapeHtml(u.arch)}" width="256" height="192" aria-label="${HUD.escapeHtml(u.name)}"></canvas>
+            <canvas class="codex-unit-art" data-team="${civ.side}" data-arch="${HUD.escapeHtml(u.arch)}" data-anim="${HUD.escapeHtml(u.anim || "")}" width="256" height="192" aria-label="${HUD.escapeHtml(u.name)}"></canvas>
             <div>
               <h4>${HUD.escapeHtml(u.name)}</h4>
               <div class="codex-sub">${HUD.escapeHtml(unitRoleText(u))} · ${HUD.escapeHtml(prereqName(civ, u.prereq))}</div>
@@ -421,7 +428,7 @@
               <span>攻速 ${u.atkCd}s</span>
               <span>训练 ${u.buildTime}s</span>
             </div>
-            <div class="codex-desc">原型 ${HUD.escapeHtml(u.arch)}${HUD.escapeHtml(splash)}${HUD.escapeHtml(jump)}</div>
+            <div class="codex-desc">${HUD.escapeHtml(u.desc || ("原型 " + u.arch + splash + jump))}</div>
           </article>
         `;
       }).join("");
@@ -460,7 +467,7 @@
           <div class="codex-skill-icon">${skillIcon(s)}</div>
           <div>
             <h4>${HUD.escapeHtml(s.name)}</h4>
-            <div class="codex-sub">消耗 ${s.cost} 能量 · ${HUD.escapeHtml(s.kind)}</div>
+            <div class="codex-sub">消耗 ${s.cost} 能量 · 冷却 ${s.cd || 0} 秒 · ${HUD.escapeHtml(s.kind)}</div>
           </div>
           <div class="codex-desc">${HUD.escapeHtml(s.desc)} ${HUD.escapeHtml(extra)}</div>
         </article>
@@ -485,7 +492,7 @@
       if (App.screen !== "codex") { codexAnimRaf = 0; return; }
       canvases.forEach(cv => {
         const anim = Render?.animSheetForArch
-          ? Render.animSheetForArch(cv.dataset.team, cv.dataset.arch, "walk")
+          ? Render.animSheetForArch(cv.dataset.team, cv.dataset.arch, "walk", cv.dataset.anim || null)
           : null;
         const ctx = cv.getContext("2d");
         if (!ctx) return;
@@ -520,6 +527,10 @@
                                     : (amHost() ? "房主 · 挑好模式、选好文明后开始对战" : "等待房主开始");
     document.getElementById("lobby-start").style.display = amHost() ? "" : "none";
     document.getElementById("lobby-mode").disabled = !amHost();
+    // 3v3 第三格的显示/隐藏
+    document.querySelectorAll(".slot-3v3").forEach(el => {
+      el.style.display = state.mode === "3v3" ? "" : "none";
+    });
 
     // 我这一格的信息
     const me = state.slots.find(s => s.clientId === myCid());
@@ -636,32 +647,25 @@
   function startGameOnClient(msg) {
     App.isHost = Net.iAmHost();
     App.isLocal = false;
-    // 定位自己在 players 里的 seat
     let mySeat = null;
-    msg.players.forEach((p, i) => { if (p.clientId === Net.myClientId()) mySeat = i; });
+    (msg.players || []).forEach((p, i) => { if (p.clientId === Net.myClientId()) mySeat = i; });
+    if (mySeat == null && App.isHost) mySeat = 0;
     App.meSeat = mySeat;
-    // 构造 config；若是房主：跑仿真；否则：只渲染
-    if (App.isHost) {
-      const state = Sim.createInitialState({ seed: msg.seed, players: msg.players });
-      App.state = state;
-      App.displayState = state;
-      App.matchMeta = { mode: Lobby.getState().mode, config: msg, started_at: new Date().toISOString() };
-      startLoop(true);
-    } else {
-      // 客户端：等收到 snapshot 再渲染
-      App.state = null;
-      App.displayState = null;
-      App.matchMeta = { mode: Lobby.getState().mode, config: msg, started_at: new Date().toISOString() };
-      startLoop(false);
-    }
+    const state = Sim.createInitialState({
+      seed: msg.seed,
+      players: msg.players,
+      mode: msg.mode || Lobby.getState()?.mode,
+    });
+    App.state = state;
+    App.displayState = state;
+    App.matchMeta = { mode: msg.mode || Lobby.getState()?.mode, config: msg, started_at: new Date().toISOString() };
+    App._waitingHostEnd = false;
+    startLoop(true);
     Matches.start();
     showScreen("play");
   }
   function startGameFromNet(cfg) {
-    // 房主自己：跟客户端一样走 startGameOnClient（自己 broadcast + 自己收到）
-    // 但为简化流程，房主也直接调用一次
-    App.meSeat = 0;
-    startGameOnClient({ seed: cfg.seed, players: cfg.players });
+    startGameOnClient({ seed: cfg.seed, players: cfg.players, mode: cfg.mode });
   }
 
   // ------------- 从单机 lobby 开始 -------------
@@ -669,7 +673,7 @@
     const players = lobby.slots.map(s => ({
       team: s.team, civId: s.civId, isAI: !!s.isAI, name: s.name, row: s.row,
     }));
-    App.state = Sim.createInitialState({ players });
+    App.state = Sim.createInitialState({ players, mode: lobby.mode });
     App.displayState = App.state;
     App.meSeat = 0;
     App.isHost = true;
@@ -679,157 +683,201 @@
     showScreen("play");
   }
 
-  // ------------- 分发动作（本地/网络） -------------
-  function dispatch(act) {
-    if (!act) return { ok:false };
-    // 本地/房主：直接 apply
-    if (App.isHost && App.state) {
-      const r = Sim.applyAction(App.state, act);
-      if (r.ok) {
-        if (act.op === "spawn") Audio2.spawn();
-        else if (act.op === "build") Audio2.build();
-        else if (act.op === "skill") { Audio2.skill(); HUD.showFloater(`⚡ ${SKILLS[act.skill].name}!`); }
-      } else {
-        // 提示原因
-        if (r.err === "gold") HUD.showFloater("💰 钱不够", "#ff8888");
-        else if (r.err === "pop") HUD.showFloater("👥 人口已满", "#ff8888");
-        else if (r.err === "prereq") HUD.showFloater("🔒 需要科技建筑", "#ff8888");
-        else if (r.err === "cap") HUD.showFloater("已达建造上限", "#ff8888");
-        else if (r.err === "cd") { /* 静默 */ }
-        else if (r.err === "energy") HUD.showFloater("⚡ 能量不够", "#ff8888");
-      }
-      return r;
-    }
-    // 客户端：发到房主
-    Net.broadcast({ type:"action", act });
-    return { ok:true };
+  // ------------- 分发动作：本地立刻执行，联机只转发按键 -------------
+  function playActionFeedback(act, r, silent) {
+    if (silent || !r || !r.ok) return;
+    if (act.seat !== App.meSeat) return;
+    if (act.op === "spawn") Audio2.spawn();
+    else if (act.op === "build") Audio2.build();
+    else if (act.op === "skill") { Audio2.skill(); HUD.showFloater(`⚡ ${SKILLS[act.skill].name}!`); }
   }
-  App.aiDispatch = (act) => Sim.applyAction(App.state, act);
+  function playActionError(r) {
+    if (!r || r.ok) return;
+    if (r.err === "gold") HUD.showFloater("💰 钱不够", "#ff8888");
+    else if (r.err === "pop") HUD.showFloater("👥 人口已满", "#ff8888");
+    else if (r.err === "prereq") HUD.showFloater("🔒 需要科技建筑", "#ff8888");
+    else if (r.err === "cap") HUD.showFloater("已达建造上限", "#ff8888");
+    else if (r.err === "energy") HUD.showFloater("⚡ 能量不够", "#ff8888");
+    else if (r.err === "cd") HUD.showFloater("冷却中", "#ffaa66");
+  }
+  function dispatch(act, opts) {
+    if (!act) return { ok:false };
+    const silent = !!(opts && opts.silent);
+    if (act.op === "skill" && App.state && act.seat === App.meSeat) {
+      const me = App.state.players[act.seat];
+      const sk = SKILLS[act.skill];
+      if (me && sk && Sim.skillCdRemain(me, sk, App.state.time) > 0) {
+        if (!silent) playActionError({ err: "cd" });
+        return { ok:false, err:"cd" };
+      }
+    }
+    let r = { ok:true };
+    if (App.state && !App.state.over) {
+      r = Sim.applyAction(App.state, act);
+      if (act.seat === App.meSeat) {
+        if (r.ok) playActionFeedback(act, r, silent);
+        else playActionError(r);
+      }
+    }
+    // 只传成功的按键指令。自己发出的回声在 applyRemoteAction 里丢掉。
+    if (!App.isLocal && (r.ok || act.op === "resign")) {
+      try { Net.broadcast({ type:"action", act }); } catch (e) { console.warn("[net] action", e); }
+    }
+    return r;
+  }
+  function applyRemoteAction(act, fromId) {
+    if (!act || !App.state || App.state.over) return;
+    if (fromId && fromId === Net.myClientId()) return;
+    Sim.applyAction(App.state, act);
+  }
+  App.aiDispatch = (act) => dispatch(act, { silent: true });
+
+  let _loopGen = 0;
 
   // ------------- 游戏主循环 -------------
   function startLoop(runSim) {
     stopLoop();
+    const myGen = _loopGen;
     App.paused = false;
     App.lastRAF = performance.now();
     App.accumMs = 0;
-    let snapAccum = 0;
-    const snapInterval = 200;   // ms - 房主广播频率
     App.stopLoop = false;
+    App._endHandled = false;
+    App._waitingHostEnd = false;
+    App.lastRankResult = null;
+    if (window.SFX && typeof SFX.reset === "function") SFX.reset();
 
     const step = (now) => {
-      if (App.stopLoop) return;
+      if (App.stopLoop || myGen !== _loopGen) return;
       requestAnimationFrame(step);
       const dtMs = Math.min(200, now - App.lastRAF);
       App.lastRAF = now;
 
       if (!App.paused && runSim && App.state && !App.state.over) {
-        // 固定步长仿真
         App.accumMs += dtMs * App.speed;
         while (App.accumMs >= Sim.DT_MS) {
           App.accumMs -= Sim.DT_MS;
           Sim.tickSim(App.state, Sim.DT);
-          // AI 思考
-          App.state.players.forEach(p => {
-            if (p.isAI) AI.aiThink(App.state, p.seat, App.aiDispatch);
-          });
+          // 只有房主跑 AI，指令当普通 action 转发出去
+          if (App.isHost || App.isLocal) {
+            App.state.players.forEach(p => {
+              if (p.isAI) AI.aiThink(App.state, p.seat, App.aiDispatch);
+            });
+          }
           if (App.state.over) break;
         }
-        // 快照广播
-        if (!App.isLocal) {
-          snapAccum += dtMs;
-          if (snapAccum >= snapInterval) {
-            snapAccum = 0;
-            const snap = Sim.snapshot(App.state);
-            Net.broadcast({ type:"snapshot", snap });
-          }
-        }
       }
-      // 渲染
-      const rs = App.isHost ? App.state : App.displayState;
-      if (rs) {
-        // 清屏
-        App.ctx.clearRect(0, 0, App.canvas.width, App.canvas.height);
-        Render.render(App.ctx, rs, App.isHost ? App.state.time : (App.displayState.time || 0), App.meSeat);
-        HUD.renderTop(rs);
-        HUD.renderPlayerStrip(rs, App.meSeat, dispatch);
-
-        // 检查结束
-        if (rs.over && !App._endHandled) {
+      const rs = App.state || App.displayState;
+      if (rs && rs.over && !App._endHandled) {
+        if (App.isLocal || App.isHost) {
           App._endHandled = true;
           onGameOver(rs);
+        } else if (!App._waitingHostEnd) {
+          App._waitingHostEnd = true;
+          try { HUD.showToast("对局结束，等待房主同步胜负…"); } catch (e) {}
+        }
+      }
+      if (rs && App.screen === "play") {
+        try {
+          App.ctx.clearRect(0, 0, App.canvas.width, App.canvas.height);
+          Render.render(App.ctx, rs, rs.time || 0, App.meSeat);
+          HUD.renderTop(rs);
+          HUD.renderPlayerStrip(rs, App.meSeat, dispatch);
+          if (window.SFX) window.SFX.diff(rs, App.meSeat);
+        } catch (e) {
+          console.warn("[loop] render fail", e);
         }
       }
     };
-    App._endHandled = false;
     requestAnimationFrame(step);
   }
   function stopLoop() {
+    _loopGen++;
     App.stopLoop = true;
     App.paused = false;
-    App._endHandled = false;
   }
-
-  function onSnapshot(snap) {
-    if (App.isHost) return;
-    App.displayState = App.displayState || {};
-    Sim.applySnapshot(App.displayState, snap);
+  function leavePlay() {
+    stopLoop();
+    App.state = null;
+    App.displayState = null;
+    App._endHandled = false;
+    App.lastRankResult = null;
+    if (window.SFX && typeof SFX.reset === "function") SFX.reset();
   }
 
   // ------------- 结束处理 -------------
   function onGameOver(state) {
-    const me = state.players[App.meSeat];
+    const me = state && state.players ? state.players[App.meSeat] : null;
     const myTeam = me ? me.team : "hk";
-    const win = state.winner === myTeam;
-    Audio2[win ? "win" : "lose"]();
+    const win = !!(state && state.winner === myTeam);
+    try {
+      if (window.SFX) SFX.play(win ? "victory" : "defeat");
+      else if (window.Audio2) Audio2[win ? "win" : "lose"]();
+    } catch (e) { console.warn("[sfx] end", e); }
 
-    // 广播 end（房主）
     if (App.isHost && !App.isLocal) {
-      Net.broadcast({
-        type:"end", winner: state.winner,
-        players: state.players, duration: state.over_time,
-      });
+      try {
+        Net.broadcast({
+          type: "end",
+          winner: state.winner,
+          duration: Math.round(state.over_time || 0),
+        });
+      } catch (e) { console.warn("[net] end broadcast", e); }
     }
 
-    // 云端统计
-    if (Stats.enabled()) Stats.reportEndOfMatch(win ? "win" : "lose", state, App.meSeat, App.matchMeta.mode);
-    // 上报对局记录
-    Matches.finish({
-      result: win ? "win" : "lose",
-      score: Math.round((me?.kills || 0) * 10 + (win ? 500 : 0) + (me?.earned || 0) * 0.1),
-      metadata: {
-        mode: App.matchMeta.mode,
-        civ: me?.civId, team: myTeam,
-        opponents: state.players.filter(p => p.team !== myTeam).map(p => p.civId),
-        duration_sec: Math.round(state.over_time),
-        kills: me?.kills || 0,
-        units_built: me?.unitsBuilt || 0,
-        buildings_built: me?.buildingsBuilt || 0,
-      },
-    });
+    try {
+      App.lastRankResult = Stats.reportEndOfMatch(win ? "win" : "lose", state, App.meSeat, App.matchMeta && App.matchMeta.mode);
+    } catch (e) {
+      console.warn("[rank] report fail", e);
+      App.lastRankResult = null;
+    }
+    try {
+      Matches.finish({
+        result: win ? "win" : "lose",
+        score: Math.round((me?.kills || 0) * 10 + (win ? 500 : 0) + (me?.earned || 0) * 0.1),
+        metadata: {
+          mode: App.matchMeta && App.matchMeta.mode,
+          civ: me?.civId, team: myTeam,
+          opponents: (state.players || []).filter(p => p.team !== myTeam).map(p => p.civId),
+          duration_sec: Math.round(state.over_time || 0),
+          kills: me?.kills || 0,
+          units_built: me?.unitsBuilt || 0,
+          buildings_built: me?.buildingsBuilt || 0,
+        },
+      });
+    } catch (e) { console.warn("[matches] finish", e); }
 
-    // 展示结算界面
-    setTimeout(() => showEndScreen(state, win), 400);
+    showEndScreen(state, win);
   }
   function onEndFromNet(d) {
-    if (!App.state) {
-      // 客户端：靠这个替代结算
-      const fake = { players: d.players, hp: {hk:0,zom:0}, hpMax:{hk:1,zom:1},
-        winner: d.winner, over: true, over_time: d.duration, time: d.duration,
-        units: [], effects: [], projectiles: [], corpses: [] };
-      App.displayState = fake;
-      const me = fake.players[App.meSeat];
-      const win = fake.winner === (me ? me.team : null);
-      showEndScreen(fake, win);
+    if (App.isHost) return;
+    if (App._endHandled) return;
+    App._endHandled = true;
+    if (App.state) {
+      App.state.over = true;
+      App.state.winner = d.winner;
+      App.state.over_time = d.duration || App.state.time;
     }
+    const rs = App.state || {
+      players: d.players || [], hp: {hk:0,zom:0}, hpMax:{hk:1,zom:1},
+      winner: d.winner, over: true, over_time: d.duration, time: d.duration,
+      units: [], effects: [], projectiles: [], corpses: [],
+    };
+    App.displayState = rs;
+    onGameOver(rs);
   }
 
   async function showEndScreen(state, win) {
+    stopLoop();
+    showScreen("end");
     const t = document.getElementById("end-title");
-    t.textContent = win ? "🎉 胜利！" : "💀 失败";
-    t.style.color = win ? "#4c9c40" : "#c93c3c";
-    const me = state.players[App.meSeat];
+    if (t) {
+      t.textContent = win ? "🎉 胜利！" : "💀 失败";
+      t.style.color = win ? "#4c9c40" : "#c93c3c";
+    }
+    const me = state && state.players ? state.players[App.meSeat] : null;
     const sum = document.getElementById("end-summary");
-    sum.innerHTML = "";
+    if (sum) sum.innerHTML = "";
     const items = [
       { k: "阵营", v: (me?.team === "hk" ? "🏙️ 香港" : "🧟 僵尸") },
       { k: "文明", v: CIVS[me?.civId]?.name || "-" },
@@ -838,21 +886,44 @@
       { k: "造楼", v: me?.buildingsBuilt ?? 0 },
       { k: "总花费", v: "$" + Math.round(me?.spent || 0) },
       { k: "总收入", v: "$" + Math.round(me?.earned || 0) },
-      { k: "用时",   v: Math.round(state.over_time) + " 秒" },
+      { k: "用时",   v: Math.round((state && state.over_time) || 0) + " 秒" },
     ];
-    items.forEach(it => {
+    const rr = App.lastRankResult;
+    if (rr) {
+      const sign = rr.delta >= 0 ? "+" : "";
+      const kind = rr.pvp ? "对战玩家" : "对战AI";
+      let extra = "";
+      if (rr.promoted) extra = " · 晋升！";
+      if (rr.demoted) extra = " · 掉段";
+      items.push({
+        k: "排位",
+        v: `${Rank.title(rr.afterInfo)} ${rr.afterInfo.lp}胜点`,
+      });
+      items.push({
+        k: kind,
+        v: `${sign}${rr.delta} 胜点${extra}`,
+      });
+    }
+    if (sum) items.forEach(it => {
       const el = document.createElement("div");
       el.className = "metric";
-      el.innerHTML = `<div class="k">${it.k}</div><div class="v">${it.v}</div>`;
+      const deltaClass = (it.k === "对战玩家" || it.k === "对战AI")
+        ? (" rank-delta " + ((rr && rr.delta >= 0) ? "up" : "down"))
+        : "";
+      el.innerHTML = `<div class="k">${it.k}</div><div class="v${deltaClass}">${it.v}</div>`;
       sum.appendChild(el);
     });
 
-    // 历史
     const hist = document.getElementById("end-history");
-    hist.innerHTML = "<h4>最近的对局</h4><div id='hist-list' class='hint'>加载中…</div>";
+    if (hist) hist.innerHTML = "<h4>最近的对局</h4><div id='hist-list' class='hint'>加载中…</div>";
+
     try {
-      const page = await Matches.history(10);
+      const page = await Promise.race([
+        Matches.history(10),
+        new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), 2500)),
+      ]);
       const list = document.getElementById("hist-list");
+      if (!list) return;
       if (!page || !page.matches || page.matches.length === 0) list.textContent = "暂无历史";
       else list.innerHTML = page.matches.map(m =>
         `<div class="hrow">
@@ -863,14 +934,15 @@
           <span>${(m.recorded_at || "").slice(5, 16)}</span>
         </div>`
       ).join("");
-    } catch { document.getElementById("hist-list").textContent = "拉取失败"; }
-
-    showScreen("end");
+    } catch {
+      const list = document.getElementById("hist-list");
+      if (list) list.textContent = "暂无历史";
+    }
   }
 
   function replay() {
     if (App.isLocal) {
-      // 用相同 lobby 重开
+      if (!App.lobby) { showScreen("menu"); return; }
       startGameFromLobby(App.lobby);
     } else if (Net.iAmHost() && Lobby.getState()) {
       Lobby.hostStartGame();
@@ -894,25 +966,117 @@
       document.getElementById("btn-speed").textContent = App.speed + "×";
     });
     document.getElementById("btn-quit").addEventListener("click", () => {
-      if (confirm("确定离场？（会算作败北）")) {
-        if (App.state) {
-          // 让自己队伍算失败：把自己方所有玩家的基地 HP 都打成 0
-          const me = App.state.players[App.meSeat];
-          if (me) {
-            App.state.players.forEach(p => {
-              if (p.team === me.team) p.baseHp = 0;
-            });
-          }
-        } else {
-          showScreen("menu");
-        }
+      if (!confirm("确定离场？（会算作败北）")) return;
+      if (App.state && !App.state.over && App.meSeat != null) {
+        dispatch({ op: "resign", seat: App.meSeat }, { silent: true });
+        return;
       }
+      leavePlay();
+      showScreen("menu");
     });
     window.addEventListener("click", () => Audio2.resume(), { once:true });
   }
 
   function bindHelpUI() {
     // "help-close" 已在 bindMenuButtons 处理
+  }
+
+  // ------------- 排位荣耀榜 -------------
+  function esc(s) { return (HUD && HUD.escapeHtml) ? HUD.escapeHtml(String(s ?? "")) : String(s ?? ""); }
+
+  function rankInfoHtml(info, serverRank) {
+    const need = Rank.lpNeed(info);
+    const pct = need ? Math.max(0, Math.min(100, (info.lp / need) * 100)) : 100;
+    const lpText = need ? `${info.lp} / ${need} 胜点` : `${info.lp} 胜点（王者积分）`;
+    const rankText = serverRank ? `全服第 ${serverRank} 名` : (Stats.enabled() ? "尚未上榜" : "本地段位 · 登录后计入全服");
+    return `
+      <div class="rank-me">
+        <img class="rank-icon" src="${Rank.iconSrc(info.tier.id)}" alt="${esc(info.tier.name)}">
+        <div>
+          <div class="rank-name" style="color:${info.tier.color}">${esc(Rank.title(info))}</div>
+          <div class="rank-sub">${esc(lpText)} · ${esc(rankText)}</div>
+          <div class="rank-lpbar"><i style="width:${pct}%"></i></div>
+        </div>
+      </div>`;
+  }
+
+  function entryRow(entry, myUserId) {
+    const info = Rank.decode(entry.score);
+    const name = entry.nickname || entry.username || entry.name || "玩家";
+    const isMe = myUserId != null && entry.user_id === myUserId;
+    return `<div class="rank-row${isMe ? " me" : ""}">
+      <span class="pos">${entry.rank || "-"}</span>
+      <img src="${Rank.iconSrc(info.tier.id)}" alt="">
+      <span class="who">${esc(name)}${isMe ? " · 我" : ""}</span>
+      <span class="lp">${esc(Rank.title(info))} · ${info.lp}点</span>
+    </div>`;
+  }
+
+  async function fetchRankBoard(limit) {
+    if (!Stats.enabled() || !Stats.board) return null;
+    try { return await Stats.board("board_rank", limit || 50); }
+    catch (e) { console.warn("[rank] board fail", e); return null; }
+  }
+
+  async function refreshRankPanel() {
+    const box = document.getElementById("rank-panel-body");
+    if (!box) return;
+    const info = Rank.decode(Rank.currentScore());
+    let board = null;
+    if (Stats.enabled()) board = await fetchRankBoard(5);
+    const myRank = board && board.me ? board.me.rank : null;
+    const myUserId = board && board.top && board.me
+      ? (board.top.find(e => e.rank === board.me.rank && e.score === board.me.score) || {}).user_id
+      : null;
+    let list = "";
+    if (board && board.top && board.top.length) {
+      list = `<div class="rank-top">${board.top.slice(0, 5).map(e => entryRow(e, myUserId)).join("")}</div>`;
+    } else {
+      list = `<div class="rank-empty">${Stats.enabled() ? "全服榜还是空的，打完第一场就会上榜。" : "未登录：段位只记在本机，登录后同步全服荣耀榜。"}</div>`;
+    }
+    box.innerHTML = rankInfoHtml(info, myRank) + list;
+  }
+
+  async function renderRankBoard() {
+    const root = document.getElementById("rank-board");
+    if (!root) return;
+    const info = Rank.decode(Rank.currentScore());
+    root.innerHTML = `<div class="rank-showcase">加载中…</div><div class="rank-list"></div>`;
+    const board = Stats.enabled() ? await fetchRankBoard(50) : null;
+    const myRank = board && board.me ? board.me.rank : null;
+    const wins = Stats.enabled() ? (Stats.get("wins_total") || 0) : 0;
+    const matches = Stats.enabled() ? (Stats.get("matches_total") || 0) : 0;
+    const peak = Rank.decode(Stats.enabled() ? (Stats.get("rank_peak") || Rank.currentScore()) : Rank.currentScore());
+    const myUserId = board && board.top && board.me
+      ? (board.top.find(e => e.rank === board.me.rank && Math.round(e.score) === Math.round(board.me.score)) || {}).user_id
+      : null;
+
+    const showcase = document.createElement("div");
+    showcase.className = "rank-showcase";
+    const need = Rank.lpNeed(info);
+    const pct = need ? Math.max(0, Math.min(100, (info.lp / need) * 100)) : 100;
+    showcase.innerHTML = `
+      <img src="${Rank.iconSrc(info.tier.id)}" alt="${esc(info.tier.name)}">
+      <div class="rank-name" style="color:${info.tier.color}">${esc(Rank.title(info))}</div>
+      <div class="rank-sub">${need ? (info.lp + " / " + need + " 胜点") : (info.lp + " 王者积分")}</div>
+      <div class="rank-lpbar"><i style="width:${pct}%"></i></div>
+      <div class="rank-meta">
+        <div class="cell"><div class="k">全服排名</div><div class="v">${myRank ? "#" + myRank : "—"}</div></div>
+        <div class="cell"><div class="k">历史最高</div><div class="v">${esc(Rank.title(peak))}</div></div>
+        <div class="cell"><div class="k">总胜场</div><div class="v">${wins}</div></div>
+        <div class="cell"><div class="k">总对局</div><div class="v">${matches}</div></div>
+      </div>`;
+
+    const list = document.createElement("div");
+    list.className = "rank-list";
+    if (board && board.top && board.top.length) {
+      list.innerHTML = board.top.map(e => entryRow(e, myUserId)).join("");
+    } else {
+      list.innerHTML = `<div class="rank-empty">${Stats.enabled() ? "暂无上榜玩家。" : "登录 GameHub 后即可查看全服段位。"}</div>`;
+    }
+    root.innerHTML = "";
+    root.appendChild(showcase);
+    root.appendChild(list);
   }
 
   // 曝露给控制台调试

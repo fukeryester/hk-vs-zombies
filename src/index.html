@@ -4,25 +4,40 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>香港大战僵尸</title>
-  <link rel="stylesheet" href="style.css?v=8">
+  <link rel="stylesheet" href="style.css?v=12">
 </head>
 <body>
   <div id="app">
+    <div id="ui-bg" aria-hidden="true">
+      <div id="ui-bg-a" class="ui-bg-slide"></div>
+      <div id="ui-bg-b" class="ui-bg-slide"></div>
+      <div class="ui-bg-veil"></div>
+    </div>
     <!-- ============= 主菜单 ============= -->
     <section id="menu-screen" class="screen active">
       <h1 class="logo">香港<span class="vs">大战</span>僵尸</h1>
       <p class="tagline">拾荒·建筑·爆兵·收割 · 一条中路见真章</p>
-      <div class="menu-actions">
-        <button class="btn primary" data-action="quick-1v1">快速开局 1v1（vs AI）</button>
-        <button class="btn" data-action="quick-2v2">2v2 混战（vs AI）</button>
-        <button class="btn" data-action="host">创建联机房间</button>
-        <button class="btn" data-action="join">加入房间</button>
-        <button class="btn" data-action="codex">图鉴百科</button>
-        <button class="btn ghost" data-action="help">怎么玩</button>
+      <div class="menu-layout">
+        <div class="menu-actions">
+          <button class="btn primary" data-action="quick-1v1">快速开局 1v1（vs AI）</button>
+          <button class="btn" data-action="quick-2v2">2v2 混战（vs AI）</button>
+          <button class="btn" data-action="quick-3v3">3v3 大混战（vs AI）</button>
+          <button class="btn" data-action="host">创建联机房间</button>
+          <button class="btn" data-action="join">加入房间</button>
+          <button class="btn" data-action="codex">图鉴百科</button>
+          <button class="btn ghost" data-action="help">怎么玩</button>
+        </div>
+        <aside class="rank-panel" id="rank-panel">
+          <div class="rank-panel-head">
+            <h3>排位赛荣耀榜</h3>
+            <button class="btn tiny" data-action="rank-board">完整榜单</button>
+          </div>
+          <div id="rank-panel-body" class="rank-panel-body">加载段位中…</div>
+        </aside>
       </div>
       <div class="menu-footer">
         <span id="menu-account">未登录（本地模式）</span>
-        <span class="build">v0.1 · GameHub 版</span>
+        <span class="build">v3.10 · 菜单背景</span>
       </div>
     </section>
 
@@ -38,6 +53,7 @@
           <h3>香港阵营</h3>
           <div class="slot" data-team="hk" data-slot="0"></div>
           <div class="slot" data-team="hk" data-slot="1"></div>
+          <div class="slot slot-3v3" data-team="hk" data-slot="2"></div>
         </div>
         <div class="lobby-mid">
           <div class="mode-picker">
@@ -45,6 +61,7 @@
             <select id="lobby-mode">
               <option value="1v1">1v1（一对一）</option>
               <option value="2v2">2v2（二对二）</option>
+              <option value="3v3">3v3（三对三）</option>
             </select>
           </div>
           <div class="civ-picker" id="lobby-civ-picker"></div>
@@ -58,6 +75,7 @@
           <h3>僵尸阵营</h3>
           <div class="slot" data-team="zom" data-slot="0"></div>
           <div class="slot" data-team="zom" data-slot="1"></div>
+          <div class="slot slot-3v3" data-team="zom" data-slot="2"></div>
         </div>
       </div>
     </section>
@@ -131,14 +149,27 @@
           <li>💰 <b>金钱</b>被动增长，用来买兵与建筑。</li>
           <li>🏠 <b>民房</b>增加人口上限；<b>拾荒场</b>增加金钱速率。</li>
           <li>⚔️ 出兵按 <b>1~9 快捷键</b> 或点击底部按钮。要看兵种的<b>建造前提</b>。</li>
-          <li>🔥 击杀累积 <b>Yee-Haw 能量</b>，够了就放<b>大招</b>——农民起义/收割机/空袭。</li>
+          <li>🔥 击杀累积 <b>Yee-Haw 能量</b>，够了就放<b>大招</b>（Q/W/E）。大招有冷却，按钮上的灰圈转完才能再放。</li>
           <li>🎯 打爆对面的基地血条即胜利，己方血条为 0 即失败。</li>
           <li>🧠 每个"文明"有独特兵种、建筑与打法（暴兵流 / 经济流 / 均衡流 / 机动流…）。</li>
+          <li>🏅 <b>排位赛</b>从坚韧黑铁4起步，每小段 100 胜点。打 AI 胜/负 ±15，打玩家双倍 ±30。</li>
         </ul>
         <div class="dialog-actions">
           <button class="btn primary" data-action="help-close">明白啦</button>
         </div>
       </div>
+    </section>
+
+    <!-- ============= 排位荣耀榜 ============= -->
+    <section id="rank-screen" class="screen">
+      <header class="rank-head">
+        <button class="btn ghost" data-action="rank-back">← 返回</button>
+        <div>
+          <h2>排位赛荣耀榜</h2>
+          <p>全服段位 · 对战玩家胜点双倍 · 每小段 100 胜点</p>
+        </div>
+      </header>
+      <div class="rank-board" id="rank-board"></div>
     </section>
 
     <!-- ============= 图鉴 ============= -->
@@ -173,18 +204,20 @@
   <script src="/static/gamehub-matches.js"></script>
 
   <!-- 游戏 -->
-  <script src="js/assets.js?v=10"></script>
-  <script src="js/civs.js?v=8"></script>
-  <script src="js/audio.js?v=3"></script>
-  <script src="js/sim.js?v=11"></script>
-  <script src="js/ai.js?v=3"></script>
-  <script src="js/render.js?v=11"></script>
-  <script src="js/input.js?v=3"></script>
-  <script src="js/net.js?v=3"></script>
-  <script src="js/stats.js?v=3"></script>
+  <script src="js/assets.js?v=12"></script>
+  <script src="js/civs.js?v=14"></script>
+  <script src="js/audio.js?v=5"></script>
+  <script src="js/sim.js?v=19"></script>
+  <script src="js/ai.js?v=5"></script>
+  <script src="js/render.js?v=13"></script>
+  <script src="js/input.js?v=4"></script>
+  <script src="js/net.js?v=4"></script>
+  <script src="js/rank.js?v=1"></script>
+  <script src="js/stats.js?v=5"></script>
   <script src="js/matches.js?v=3"></script>
-  <script src="js/hud.js?v=5"></script>
-  <script src="js/lobby.js?v=8"></script>
-  <script src="js/main.js?v=10"></script>
+  <script src="js/hud.js?v=9"></script>
+  <script src="js/lobby.js?v=9"></script>
+  <script src="js/ui-bg.js?v=1"></script>
+  <script src="js/main.js?v=19"></script>
 </body>
 </html>

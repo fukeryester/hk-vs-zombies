@@ -3,6 +3,7 @@
 const HUD = (function () {
 
   function renderTop(state) {
+    if (!state || !state.players) return;
     // 顶部两个容器（.hp-hk / .hp-zom）里各放该阵营 N 名玩家的迷你血条
     renderTeamBars(document.querySelector(".hp-hk"), "hk", state);
     renderTeamBars(document.querySelector(".hp-zom"), "zom", state);
@@ -46,18 +47,19 @@ const HUD = (function () {
 
   function renderPlayerStrip(state, meSeat, dispatch) {
     const strip = document.getElementById("player-strip");
+    if (!strip || !state || !state.players) return;
     // 只重建 DOM 一次；后续只更新数值
     if (strip._built !== state.players.length) {
       strip.innerHTML = "";
       state.players.forEach(p => {
-        const civ = CIVS[p.civId];
+        const civ = CIVS[p.civId] || { name: "?", accent: "#888", units: {}, buildings: {}, skills: [] };
         const panel = document.createElement("div");
         panel.className = "player-panel" + (p.seat === meSeat ? " me" : "");
         panel.dataset.seat = p.seat;
         panel.innerHTML = `
           <div class="pp-head">
             <span class="pp-who">${p.seat === meSeat ? "★" : ""}${escapeHtml(p.name)} <span class="pp-civ">${escapeHtml(civ.name)}</span></span>
-            <span class="pp-team" style="color:${civ.accent}">${p.team === "hk" ? "🏙️" : "🧟"}</span>
+            <span class="pp-team" style="color:${civ.accent || "#888"}">${p.team === "hk" ? "🏙️" : "🧟"}</span>
           </div>
           <div class="pp-res">
             <span>💰<b class="pp-gold">0</b></span>
@@ -79,6 +81,7 @@ const HUD = (function () {
           b.dataset.uid = uid;
           b.dataset.seat = p.seat;
           const hk = (p.seat === meSeat) && i < 9 ? `<span class="hk">[${i+1}]</span>` : "";
+          if (u.desc) b.title = u.desc;
           b.innerHTML = `${escapeHtml(u.name)}<span class="cost">$${u.cost} · ${u.pop}人</span>${hk}`;
           if (p.seat === meSeat) b.addEventListener("click", () => dispatch({ op:"spawn", seat: p.seat, unit: uid }));
           btnBox.appendChild(b);
@@ -103,9 +106,22 @@ const HUD = (function () {
           b.className = "pp-btn skill";
           b.dataset.skill = sid;
           b.dataset.seat = p.seat;
+          b.title = s.desc || "";
           const hk = (p.seat === meSeat) ? `<span class="hk">[Q/W/E]</span>` : "";
-          b.innerHTML = `${escapeHtml(s.name)}<span class="cost">⚡${s.cost}</span>${hk}`;
-          if (p.seat === meSeat) b.addEventListener("click", () => dispatch({ op:"skill", seat: p.seat, skill: sid }));
+          const cdHint = s.cd ? `冷却 ${s.cd} 秒。` : "";
+          b.title = `${s.desc || ""} ${cdHint}`.trim();
+          b.innerHTML = `${escapeHtml(s.name)}<span class="cost">⚡${s.cost}</span>${hk}<i class="cd-mask" aria-hidden="true"></i><span class="cd-sec"></span>`;
+          if (p.seat === meSeat) b.addEventListener("click", (ev) => {
+            ev.preventDefault();
+            const live = (window.__APP && window.__APP.state) || state;
+            const liveP = live.players && live.players[p.seat];
+            const remain = Sim.skillCdRemain(liveP, s, live.time);
+            if (remain > 0) {
+              showFloater("冷却中 " + Math.ceil(remain) + "s", "#ffaa66");
+              return;
+            }
+            dispatch({ op:"skill", seat: p.seat, skill: sid });
+          });
           btnBox.appendChild(b);
         });
       });
@@ -116,16 +132,18 @@ const HUD = (function () {
     state.players.forEach(p => {
       const panel = strip.querySelector(`.player-panel[data-seat="${p.seat}"]`);
       if (!panel) return;
-      panel.querySelector(".pp-gold").textContent = Math.floor(p.gold);
-      panel.querySelector(".pp-inc").textContent = p.income.toFixed(1);
+      panel.querySelector(".pp-gold").textContent = Math.floor(p.gold || 0);
+      panel.querySelector(".pp-inc").textContent = (Number(p.income) || 0).toFixed(1);
       panel.querySelector(".pp-pop").textContent = `${p.pop}/${p.popCap}`;
       panel.querySelector(".pp-eng").textContent = Math.floor(p.energy);
-      const maxEng = Math.max(...CIVS[p.civId].skills.map(s => SKILLS[s].cost));
+      const civSkills = (CIVS[p.civId] && CIVS[p.civId].skills) || [];
+      const maxEng = Math.max(1, ...civSkills.map(s => (SKILLS[s] && SKILLS[s].cost) || 0));
       const nrg = panel.querySelector(".pp-energy .fg");
       if (nrg) nrg.style.width = Math.min(100, (p.energy / maxEng) * 100) + "%";
 
       // 按钮可用性
       const civ = CIVS[p.civId];
+      if (!civ) return;
       panel.querySelectorAll(".pp-btn.unit").forEach(b => {
         const u = civ.units[b.dataset.uid];
         const need = u.prereq ? p.built[u.prereq] : true;
@@ -141,7 +159,16 @@ const HUD = (function () {
       });
       panel.querySelectorAll(".pp-btn.skill").forEach(b => {
         const s = SKILLS[b.dataset.skill];
-        b.classList.toggle("disabled", p.energy < s.cost);
+        if (!s) return;
+        const remain = Sim.skillCdRemain(p, s, state.time);
+        const frac = s.cd > 0 ? Math.min(1, remain / s.cd) : 0;
+        const onCd = remain > 0.02;
+        b.classList.toggle("disabled", p.energy < s.cost && !onCd);
+        b.classList.toggle("cooling", onCd);
+        const mask = b.querySelector(".cd-mask");
+        if (mask) mask.style.setProperty("--cd", frac.toFixed(4));
+        const sec = b.querySelector(".cd-sec");
+        if (sec) sec.textContent = onCd ? String(Math.ceil(remain)) : "";
       });
     });
   }

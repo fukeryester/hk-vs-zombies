@@ -18,14 +18,13 @@ const Lobby = (function () {
   // 本地大厅：单机模式（vs AI）直接跳过展示
   function buildLocal(mode, hkCiv, zomCiv) {
     const slots = [];
-    if (mode === "1v1") {
-      slots.push({ seat:0, team:"hk", civId: hkCiv, name:"我", isAI:false, ready:true, row:0 });
-      slots.push({ seat:1, team:"zom", civId: zomCiv, name:"AI", isAI:true, ready:true, row:0 });
-    } else {
-      slots.push({ seat:0, team:"hk", civId: hkCiv, name:"我", isAI:false, ready:true, row:0 });
-      slots.push({ seat:1, team:"hk", civId: HK_CIVS[(HK_CIVS.indexOf(hkCiv)+1) % HK_CIVS.length], name:"AI 队友", isAI:true, ready:true, row:1 });
-      slots.push({ seat:2, team:"zom", civId: zomCiv, name:"AI 敌", isAI:true, ready:true, row:0 });
-      slots.push({ seat:3, team:"zom", civId: ZOM_CIVS[(ZOM_CIVS.indexOf(zomCiv)+1) % ZOM_CIVS.length], name:"AI 敌 2", isAI:true, ready:true, row:1 });
+    const perSide = mode === "1v1" ? 1 : (mode === "3v3" ? 3 : 2);
+    slots.push({ seat:0, team:"hk", civId: hkCiv, name:"我", isAI:false, ready:true, row:0 });
+    for (let i = 1; i < perSide; i++) {
+      slots.push({ seat:slots.length, team:"hk", civId: HK_CIVS[(HK_CIVS.indexOf(hkCiv)+i) % HK_CIVS.length], name:"AI 队友"+(i>1?" "+i:""), isAI:true, ready:true, row:i });
+    }
+    for (let i = 0; i < perSide; i++) {
+      slots.push({ seat:slots.length, team:"zom", civId: ZOM_CIVS[(ZOM_CIVS.indexOf(zomCiv)+i) % ZOM_CIVS.length], name:"AI 敌"+(i>0?" "+(i+1):""), isAI:true, ready:true, row:i });
     }
     return { mode, hostSeat:0, slots, fillAI:true };
   }
@@ -83,13 +82,12 @@ const Lobby = (function () {
   }
 
   function fillAISlots() {
-    const cap = state.mode === "1v1" ? 2 : 4;
+    const perSide = state.mode === "1v1" ? 1 : (state.mode === "3v3" ? 3 : 2);
+    const cap = perSide * 2;
     // 补齐到 cap 个座位
     while (state.slots.length < cap) {
       const teamCountHK = state.slots.filter(s => s.team === "hk").length;
       const teamCountZom = state.slots.filter(s => s.team === "zom").length;
-      // 目标模式下每队最多多少人：1v1 → 1，2v2 → 2
-      const perSide = state.mode === "1v1" ? 1 : 2;
       let team = teamCountHK < perSide ? "hk" : "zom";
       let row = state.slots.filter(s => s.team === team).length;
       let civId = team === "hk" ? HK_CIVS[state.slots.length % HK_CIVS.length]
@@ -255,9 +253,9 @@ const Lobby = (function () {
       // 关联真实客户端（非 AI）
       clientId: s.clientId || null,
     }));
-    Net.broadcast({ type:"start", seed, players });
-    if (onStart) onStart({ seed, players });
-    return { seed, players };
+    Net.broadcast({ type:"start", seed, players, mode: state.mode });
+    if (onStart) onStart({ seed, players, mode: state.mode });
+    return { seed, players, mode: state.mode };
   }
 
   function setHostFlags(isHost, clientId) {

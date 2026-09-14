@@ -36,7 +36,13 @@ const Input = (function () {
         act = { op:"build", seat: ctx.meSeat, kind: m.key };
       } else if (m.kind === "skill") {
         const sid = civ.skills[m.idx];
-        if (sid) act = { op:"skill", seat: ctx.meSeat, skill: sid };
+        if (!sid) return;
+        const s = SKILLS[sid];
+        if (s && Sim.skillCdRemain(p, s, ctx.state.time) > 0) {
+          ev.preventDefault();
+          return;
+        }
+        act = { op:"skill", seat: ctx.meSeat, skill: sid };
       }
       if (act) {
         ev.preventDefault();

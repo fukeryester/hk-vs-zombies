@@ -10,6 +10,7 @@ const R = {
   GROUND_Y: 470,            // 战线底部（视觉水平线，压低给天空更多空间）
   ROW_OFFSET: [0, -55],     // row 0 前排；row 1 后排（视觉靠上&略小）
 };
+let LAST_SNAP = null;
 
 // x/y from sim → 画布坐标
 function toCanvas(x, y, row) {
@@ -30,6 +31,7 @@ const ARCH_TO_IMG = {
   ranged_light: "hk_ranged_light",
   ranged_aoe:   "hk_ranged_aoe",
   ranged_heavy: "hk_ranged_heavy",
+  ranged_ceo:   "hk_ranged_ceo",
   support:      "hk_caster",
   zom_normal:   "zom_normal",
   zom_hopper:   "zom_hop",
@@ -58,6 +60,7 @@ const ARCH_HEIGHT = {
   ranged_light: 66,    // 经纪人：中偏高
   ranged_aoe:   65,    // 厨子：壮实
   ranged_heavy: 78,    // 特警：高大
+  ranged_ceo:   86,    // CEO：更魁、更醒目
   support:      68,    // 道士：中等
   zom_normal:   65,    // 经典僵尸：中等
   zom_hopper:   42,    // 跳蚤：趴地上，很矮
@@ -96,10 +99,10 @@ function animKeyForArch(team, arch) {
   return "hk_" + arch;
 }
 function animKeyForUnit(u) {
-  return animKeyForArch(u.team, u.def.arch);
+  return u.def.anim || animKeyForArch(u.team, u.def.arch);
 }
-function animSheetForArch(team, arch, action) {
-  const base = animKeyForArch(team, arch);
+function animSheetForArch(team, arch, action, animKey) {
+  const base = animKey || animKeyForArch(team, arch);
   if (!base) return null;
   const prefer = action || "walk";
   return IMG_ANIM[`${base}_${prefer}`] || IMG_ANIM[`${base}_walk`] || IMG_ANIM[`${base}_attack`] || null;
@@ -738,6 +741,24 @@ function drawEffect(ctx, e, tShow) {
       }
       break;
     }
+    case "base_shield": {
+      const player = LAST_SNAP
+        ? LAST_SNAP.players.find(p => p.seat === e.seat)
+        : null;
+      const x = player ? player.baseX : e.x;
+      const row = player ? player.row : 0;
+      const { cx, cy } = toCanvas(x, row * 60, row);
+      ctx.strokeStyle = `rgba(100,210,255,${0.35 + 0.15 * Math.sin(tShow * 6)})`;
+      ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.ellipse(cx, cy - 70, 72, 98, 0, 0, Math.PI * 2); ctx.stroke();
+      break;
+    }
+    case "radiation_field": {
+      const pulse = 0.04 + 0.025 * (1 + Math.sin(tShow * 5));
+      ctx.fillStyle = `rgba(90,255,80,${pulse})`;
+      ctx.fillRect(0, 0, R.CANVAS_W, R.CANVAS_H);
+      break;
+    }
   }
   ctx.restore();
 }
@@ -746,7 +767,7 @@ function drawProjectile(ctx, pr) {
   const t = pr.t / pr.dur;
   const x = pr.x_from + (pr.x_to - pr.x_from) * t;
   const y = pr.y_from + (pr.y_to - pr.y_from) * t;
-  const arcH = (pr.kind === "bullet") ? 0
+  const arcH = (pr.kind === "bullet" || pr.kind === "base_bullet") ? 0
              : (pr.kind === "molotov") ? 55
              : 80;
   const arc = -Math.sin(t * Math.PI) * arcH;
@@ -786,7 +807,7 @@ function drawProjectile(ctx, pr) {
     ctx.fillStyle = "rgba(255,120,20,0.7)";
     ctx.beginPath(); ctx.arc(0, -8, 1.8, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
-  } else if (pr.kind === "bullet") {
+  } else if (pr.kind === "bullet" || pr.kind === "base_bullet") {
     // 子弹曳光
     const alpha = Math.max(0, 1 - t * 0.6);
     const p0 = toCanvas(pr.x_from, pr.y_from, 0);
@@ -834,6 +855,7 @@ function drawCorpse(ctx, c, tShow) {
 // 主入口
 // ==================================================================
 function render(ctx, snap, tShow, meSeat) {
+  LAST_SNAP = snap;
   drawBackground(ctx, snap);
 
   // 玩家建造的建筑（深度：背景之前、基地/单位之后）

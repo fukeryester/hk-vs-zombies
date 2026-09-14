@@ -21,7 +21,7 @@ const IMG_LIST = [
   "build_zom_income", "build_zom_pop", "build_zom_tech_a", "build_zom_tech_b", "build_zom_tech_c",
   // 香港单位静态图（兜底/卡面）
   "hk_peasant", "hk_tank", "hk_runner",
-  "hk_ranged_light", "hk_ranged_aoe", "hk_ranged_heavy",
+  "hk_ranged_light", "hk_ranged_aoe", "hk_ranged_heavy", "hk_ranged_ceo",
   "hk_caster",
   // 僵尸单位静态图（兜底/卡面）
   "zom_normal", "zom_hop", "zom_lady",
@@ -33,9 +33,20 @@ const IMG_LIST = [
 // 每个兵种都有独立 walk / attack 两套 6 帧动画。
 const ANIM_ARCHES = [
   "hk_melee_cheap", "hk_melee_tank", "hk_melee_fast",
-  "hk_ranged_light", "hk_ranged_aoe", "hk_ranged_heavy", "hk_support",
+  "hk_ranged_light", "hk_ranged_aoe", "hk_ranged_heavy", "hk_ranged_ceo", "hk_support",
   "zom_normal", "zom_hopper", "zom_banshee", "zom_giant",
   "zom_cata", "zom_toxic", "zom_ghost",
+  // 单位专属动画（不再按 arch 复用）
+  "hk_slum_kungfu", "hk_slum_fishmonger", "hk_slum_chef",
+  "hk_slum_rickshaw", "hk_slum_dailo", "hk_slum_mahjong",
+  "hk_police_constable", "hk_police_sniper", "hk_police_swat",
+  "hk_police_truck", "hk_police_negotiator", "hk_police_hero",
+  "zom_classic_necro",
+  "zom_ghost_hopping", "zom_ghost_oil", "zom_ghost_water",
+  "zom_ghost_paper", "zom_ghost_fox", "zom_ghost_mirror",
+  "zom_bio_infected", "zom_bio_spitter", "zom_bio_mutant",
+  "zom_bio_bomber", "zom_bio_parasite", "zom_bio_radiator",
+  "zom_bio_mother",
 ];
 const ANIM_LIST = ANIM_ARCHES.flatMap(arch =>
   ["walk", "attack"].map(action => ({
@@ -57,7 +68,7 @@ function loadAssets(onProgress) {
     const img = new Image();
     img.onload  = () => { IMG[name] = img; tick(name); resolve(); };
     img.onerror = () => { console.warn("[assets] missing image:", name); tick(name); resolve(); };
-    img.src = "img/" + name + ".png?v=3";
+    img.src = "img/" + name + ".png?v=4";
   });
 
   const loadAnim = (spec) => new Promise(resolve => {
@@ -70,7 +81,7 @@ function loadAssets(onProgress) {
       resolve();
     };
     img.onerror = () => { console.warn("[assets] missing anim:", spec.path); tick(spec.key); resolve(); };
-    img.src = spec.path + "?v=4";
+    img.src = spec.path + "?v=7";
   });
 
   return Promise.all([

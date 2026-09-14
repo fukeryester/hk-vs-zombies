@@ -1,27 +1,24 @@
-/* net.js — 联机（宿主权威模式）
+/* net.js — 联机
    -----------------------------------------------------------------
-   模型：
-   - 房主 (seat=0) 跑仿真；每 5 帧 (~166ms) 广播一个 state snapshot
-   - 客户端 只渲染 snapshot；发送本地动作到房主
-   - 房主 收到动作 → applyAction → 下一次 snapshot 里反映
-   - AI 也在房主上跑
+   模型（输入同步）：
+   - 开局广播 seed + players，每端用同一份配置本地跑仿真
+   - 只转发玩家/AI 的按键指令 {type:"action", act}，不传实体快照
+   - 房主跑 AI，把 AI 指令当普通 action 转发
+   - 胜负以房主本地仿真为准，广播 {type:"end", winner, duration}
    -----------------------------------------------------------------
-   消息类型（发在 GameHubRoom.broadcast/send 的 data 字段里）：
-   { type:"lobby_state",  players, mode, hostSeat }        // 房主 → 全体：大厅状态
-   { type:"lobby_ready",  ready:true, civ:"..." }          // 客户端 → 全体：我准备好了 & 选好文明
-   { type:"start",        seed, players }                  // 房主 → 全体：开局
-   { type:"snapshot",     snap }                           // 房主 → 全体
-   { type:"action",       act }                            // 客户端 → 房主
-   { type:"end",          winner, players, duration }      // 房主 → 全体
-   { type:"chat",         msg }                            // any (未实现，预留)
+   消息类型：
+   { type:"lobby_state",  state }
+   { type:"lobby_ready",  clientId, team, civId }
+   { type:"start",        seed, players, mode }
+   { type:"action",       act }     // {op,seat,unit|kind|skill}
+   { type:"end",          winner, duration, players }
    -----------------------------------------------------------------
 */
 
 const Net = (function () {
 
-  // room 实例（GameHubRoom）
   let room = null;
-  let onEvent = null; // callback: (type, msg) => void
+  let onEvent = null;
 
   function isConnected() { return !!(room && room.ws && room.ws.readyState === 1); }
   function iAmHost() { return room && room.you && room.you.seat === 0; }
@@ -36,7 +33,6 @@ const Net = (function () {
     room.on("member_joined", m => emit("member_joined", m));
     room.on("member_left", m => emit("member_left", m));
     room.on("message", m => {
-      // m: { from, to, data }
       const d = m.data || {};
       emit("msg", { from: m.from, to: m.to, ...d });
     });
@@ -48,7 +44,7 @@ const Net = (function () {
 
   async function createRoom(gameId, maxPlayers = 4) {
     const r = await room.createRoom(gameId, maxPlayers);
-    return r; // { code, ... }
+    return r;
   }
   async function listRooms(gameId) {
     return await room.listRooms(gameId);
@@ -63,7 +59,6 @@ const Net = (function () {
   function on(cb) { onEvent = cb; }
   function emit(type, msg) { if (onEvent) onEvent(type, msg); }
 
-  // Ping keep-alive
   let pingTimer = null;
   function startPing() {
     if (pingTimer) return;
